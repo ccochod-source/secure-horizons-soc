@@ -28,11 +28,35 @@ class LotEvenements(BaseModel):
     events: list[TraceEvent]
 
 
+TypeConclusion = Literal["instruction_suspecte", "lecture_sensible", "sortie_externe", "propagation", "blocage"]
+Statut = Literal["À examiner", "En enquête", "Approuvé, en attente d'exécution", "Confiné", "Surveillance"]
+
+
 class Conclusion(BaseModel):
-    """Une affirmation de l'enquêteur, avec les événements qui la prouvent."""
+    """Une affirmation de l'enquêteur, avec les événements qui la prouvent.
+    Le type dit QUOI vérifier ; le vérificateur (du code) le contrôle sur les événements cités."""
+    type: TypeConclusion
     affirmation: str
     evidence_ids: list[str]
     verifiee: bool = False
+    raison: str = ""  # pourquoi le vérificateur l'a acceptée ou rejetée
+
+
+class Action(BaseModel):
+    """L'action de confinement proposée. origine = "regle" si la cible de l'IA était invalide et a été remplacée."""
+    type: Literal["suspendre_outil", "quarantaine_source", "revoquer_secret", "lecture_seule"]
+    cible: str
+    origine: Literal["enqueteur", "regle"] = "enqueteur"
+    correction: str = ""
+
+
+class Execution(BaseModel):
+    """Ce qui s'est réellement passé après l'approbation.
+    non_demandee : pas encore approuvé (ou refusé) ; en_attente : approuvé, la passerelle n'a pas encore confirmé ;
+    execute : la passerelle a confirmé ; echec : la passerelle a refusé ou n'a pas répondu."""
+    etat: Literal["non_demandee", "en_attente", "execute", "echec"] = "non_demandee"
+    detail: str = ""
+    horodatage: str = ""
 
 
 class Incident(BaseModel):
@@ -42,7 +66,7 @@ class Incident(BaseModel):
     agent: str
     agentId: str
     severity: Literal["Critique", "Élevée", "Modérée"]
-    status: Literal["À examiner", "En enquête", "Confiné", "Surveillance"]
+    status: Statut
     time: str
     duration: str
     description: str
@@ -55,6 +79,9 @@ class Incident(BaseModel):
     conclusions: list[Conclusion] = []
     decision: Literal["pending", "approved", "rejected"] = "pending"
     decision_reason: str = ""
+    decided_by: str = ""
+    action: Optional[Action] = None
+    execution: Execution = Execution()
 
 
 class DecisionAnalyste(BaseModel):
@@ -62,3 +89,9 @@ class DecisionAnalyste(BaseModel):
     decision: Literal["approved", "rejected"]
     reason: str = ""
     analyst: str = "analyste"
+
+
+class CompteRenduExecution(BaseModel):
+    """Ce que la passerelle renvoie quand elle a appliqué (ou pas) l'action approuvée."""
+    etat: Literal["execute", "echec"]
+    detail: str = ""
