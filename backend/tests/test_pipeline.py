@@ -143,10 +143,24 @@ def test_secret_dans_resource_absent_du_prompt():
 def test_secret_absent_des_fichiers_sqlite():
     incident = creer_incident(lot_avec_secret_dans_resource())
     client.post(f"/incidents/{incident['id']}/decision", json={"decision": "rejected"})
-    for fichier in (os.environ["SQLITE_PATH"], os.environ["CHECKPOINT_PATH"]):
-        contenu = open(fichier, "rb").read()
-        assert SECRET_URL.encode() not in contenu, fichier
-        assert b"sk-demo1234567890abcdef" not in contenu, fichier
+    for nom, contenu in contenu_brut_des_bases():
+        assert SECRET_URL.encode() not in contenu, nom
+        assert b"sk-demo1234567890abcdef" not in contenu, nom
+
+
+def contenu_brut_des_bases():
+    """Tout ce qui est écrit sur disque : incidents ET mémoire du pipeline."""
+    if not stockage.DATABASE_URL:
+        for fichier in (os.environ["SQLITE_PATH"], os.environ["CHECKPOINT_PATH"]):
+            yield fichier, open(fichier, "rb").read()
+        return
+    import psycopg
+    with psycopg.connect(stockage.DATABASE_URL) as c:
+        tables = [t for (t,) in c.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+                                          (stockage.SCHEMA,))]
+        for table in tables:
+            for ligne in c.execute(f'SELECT * FROM {stockage.SCHEMA}."{table}"'):
+                yield table, b"".join(v if isinstance(v, bytes) else str(v).encode() for v in ligne)
 
 
 # 4. Identifiants uniques, même avec des demandes simultanées -------------------------------------

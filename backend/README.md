@@ -9,3 +9,5 @@ Deux applications complémentaires sont conservées :
 Depuis la racine : `python -m pip install -r backend/requirements.txt` dans le venv.
 La passerelle exige une connexion PostgreSQL dans `DATABASE_URL`, ainsi que les tables et rôles de la migration Supabase. Le RAG et l’interface utilisent l’API HTTPS `SUPABASE_URL`.
 Ne pas confondre ces deux adresses. Les secrets restent dans les fichiers `.env` ignorés.
+
+La défense utilise désormais aussi PostgreSQL : incidents et pauses dans le schéma privé `trace` lorsque `DATABASE_URL` est défini. Sans cette variable, SQLite reste disponible pour les tests locaux.

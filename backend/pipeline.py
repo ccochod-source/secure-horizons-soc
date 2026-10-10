@@ -379,9 +379,24 @@ def construire_pipeline():
     g.add_edge("dossier", "attente_analyste")
     g.add_edge("attente_analyste", "appliquer_decision")
     g.add_edge("appliquer_decision", END)
-    # La mémoire du pipeline est dans un fichier : la pause survit même si on relance le programme.
-    memoire = SqliteSaver(sqlite3.connect(os.getenv("CHECKPOINT_PATH", "checkpoints.sqlite"), check_same_thread=False))
-    return g.compile(checkpointer=memoire)
+    return g.compile(checkpointer=memoire_du_pipeline())
+
+
+def memoire_du_pipeline():
+    """Où le pipeline range ses pauses : elles survivent même si on relance le programme.
+    Avec DATABASE_URL : dans Supabase (schéma « trace »), sinon dans un fichier SQLite."""
+    if stockage.DATABASE_URL:
+        from langgraph.checkpoint.postgres import PostgresSaver
+        from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
+        pool = ConnectionPool(stockage.DATABASE_URL, kwargs={**stockage.options_postgres(), "row_factory": dict_row},
+                              min_size=1, max_size=5, open=True)
+        import atexit
+        atexit.register(pool.close)
+        memoire = PostgresSaver(pool)
+        memoire.setup()  # crée ses tables la première fois
+        return memoire
+    return SqliteSaver(sqlite3.connect(os.getenv("CHECKPOINT_PATH", "checkpoints.sqlite"), check_same_thread=False))
 
 
 def nouveau_thread(incident_id: str) -> str:

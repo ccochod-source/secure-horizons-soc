@@ -9,7 +9,7 @@ Pour Alex, sans prérequis en code. Une étape à la fois : fais-la, regarde le 
 | `formats.py` | Les formats échangés avec l'équipe. Ils recopient ceux de l'interface (`frontend/src/lib/demo-data.ts`) : événement (`TraceEvent`), incident (`Incident`), décision de l'analyste. C'est la base de la réunion avec Léon. |
 | `pipeline.py` | Le pipeline LangGraph : règle → enquêteur (OpenAI) → vérificateur → dossier → pause jusqu'au clic de l'analyste → application de la décision. |
 | `main.py` | Le serveur (FastAPI) que l'interface et l'agent d'Elyott appellent, sur le port 8000. |
-| `stockage.py` | Range les incidents dans un fichier SQLite. Réserve un numéro unique dès la réception et n'accepte qu'une seule décision par incident. |
+| `stockage.py` | Range les incidents dans la base Supabase de l'équipe (ou dans un fichier SQLite si `DATABASE_URL` est vide). Réserve un numéro unique dès la réception et n'accepte qu'une seule décision par incident. |
 | `masquage.py` | Remplace chaque secret (clés, jetons, mots de passe dans une URL...) par un jeton stable `SECRET_001`, dans tous les champs, avant l'IA et avant la base. |
 | `execution.py` | Envoie l'action approuvée à la passerelle (`CONFINEMENT_URL`). Sans confirmation de la passerelle, l'incident n'est jamais « Confiné ». |
 | `tests/` | Les tests automatiques (`python -m pytest -q`), sans clé OpenAI. |
@@ -78,8 +78,18 @@ Codespaces propose d'ouvrir le port 8000 : ouvrir le lien et ajouter `/docs` à 
 ## Étape 8 : brancher l'interface
 
 L'interface lit `NEXT_PUBLIC_API_BASE_URL` (déjà prévu à `http://localhost:8000`). La personne qui fait l'interface remplace les données de démonstration par `GET /incidents` et le bouton Approuver par `POST /incidents/{id}/decision`. Deux ajouts côté interface :
-- le statut `IncidentStatus` gagne la valeur « Approuvé, en attente d'exécution » ;
+- le statut « Approuvé, en attente d'exécution » est déjà ajouté à `IncidentStatus` et aux badges ;
 - si `ANALYSTE_TOKEN` est défini, chaque appel envoie l'en-tête `Authorization: Bearer <jeton>`.
+
+## Étape 8 bis : brancher la base Supabase
+
+1. Demander à Léon la chaîne de connexion : dans Supabase, bouton « Connect », onglet « Session pooler » (celle-ci marche depuis Codespaces). Elle ressemble à `postgresql://postgres.xxxx:[YOUR-PASSWORD]@aws-0-eu-west-3.pooler.supabase.com:5432/postgres`, avec le mot de passe de la base à la place de `[YOUR-PASSWORD]`.
+2. La ranger comme la clé OpenAI : GitHub > Settings > Codespaces > New secret, nom `DATABASE_URL`, accès au dépôt `secure-horizons-soc`. Puis redémarrer le Codespace. Jamais dans le code ni dans un message.
+3. Relancer `MOCK_LLM=1 python pipeline.py`. Dans Supabase, Table Editor, choisir le schéma `trace` : la table `incidents` contient le nouvel incident, et les tables `checkpoints*` contiennent les pauses du pipeline.
+
+Le backend crée lui-même ses tables, dans le schéma `trace`. Ce schéma n'est pas exposé par l'API publique de Supabase : le navigateur ne peut pas lire les incidents directement, seul le backend le peut. La table `incidents` garde le dossier complet (`contenu`, en JSON) et quelques colonnes pour les requêtes de Léon : `id`, `agent_id`, `statut`, `cree_le`, `maj_le`.
+
+Pour lancer les tests sur une base PostgreSQL (dans un schéma jetable, jamais `trace`) : `TEST_DATABASE_URL=... python -m pytest -q`.
 
 ## Étape 9 : brancher la passerelle d'Elyott
 
@@ -91,5 +101,5 @@ L'interface lit `NEXT_PUBLIC_API_BASE_URL` (déjà prévu à `http://localhost:8
 - Une seule règle : lecture d'une ressource sensible suivie d'une sortie vers l'extérieur.
 - L'action réelle dépend de la passerelle d'Elyott : tant qu'elle n'est pas branchée, les incidents approuvés restent « en attente d'exécution ».
 - Les jetons d'accès sont partagés (un pour la passerelle, un pour les analystes). En entreprise : connexion par l'annuaire (SSO), et le nom de l'analyste viendra de cette connexion au lieu du champ `analyst`.
-- Stockage SQLite en attendant la base PostgreSQL de Léon (seul `stockage.py` changera).
+- Les événements sont gardés dans le dossier de l'incident ; une table d'événements séparée pourra venir avec Léon.
 - Le vérificateur contrôle le type de chaque conclusion et ses preuves, pas chaque mot de la phrase écrite par l'IA.
