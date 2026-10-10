@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .models import RAGChatRequest
+from .relay import Relay
 from .runtime import ModelError, RAGAssistant
 from .storage import DatabaseError, SupabaseStore
 
@@ -21,7 +22,7 @@ def create_app(settings=None, store=None, client=None, answerer=None):
         http = client or httpx.AsyncClient()
         app.state.settings = cfg
         app.state.store = store or SupabaseStore(cfg, http)
-        app.state.assistant = RAGAssistant(app.state.store, cfg, http, answerer)
+        app.state.assistant = RAGAssistant(app.state.store, cfg, http, answerer, Relay(app.state.store, cfg, http))
         try:
             yield
         finally:

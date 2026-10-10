@@ -72,10 +72,11 @@ class OpenAIAnswerer:
 
 
 class RAGAssistant:
-    def __init__(self, store: SupabaseStore, settings, client, answerer=None):
+    def __init__(self, store: SupabaseStore, settings, client, answerer=None, relay=None):
         self.store = store
         self.settings = settings
         self.answerer = answerer or OpenAIAnswerer(settings, client)
+        self.relay = relay
 
     async def chat(self, request: RAGChatRequest):
         conversation_id = str(uuid.uuid4())
@@ -118,10 +119,12 @@ class RAGAssistant:
         )
         events.append(response_event)
         await self.store.append_events(events, request.agent_id, conversation_id)
+        delivery = await self.relay.deliver_events(events, request.agent_id) if self.relay else {"status": "not_configured"}
         return {
             "conversation_id": conversation_id,
             "answer": answer,
             "sources": sources,
             "documents_found": len(sources),
             "model": self.settings.rag_model,
+            "pipeline_delivery": delivery,
         }

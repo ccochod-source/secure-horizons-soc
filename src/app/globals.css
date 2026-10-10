@@ -75,6 +75,8 @@ main { max-width: 1168px; margin: auto; padding: 30px 24px 18px; }
 .record-list li { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .record-list strong { font-size: 13px; }
 .record-list p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.incident-actions { display: flex; gap: 8px; margin-top: 10px; }
+.incident-actions button { padding: 6px 11px; font-size: 12px; }
 .tests-summary { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .tests-summary p { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .tests-summary > div:last-child { text-align: right; }

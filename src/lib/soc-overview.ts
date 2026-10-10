@@ -4,7 +4,7 @@ export type SocOverview = {
   pipelineConnected: boolean;
   agents: { id: string; name: string; role: string }[];
   reviews: { id: string; package: string; version: string; status: string }[];
-  incidents: { id: string; title: string; severity: string; status: string }[];
+  incidents: { id: string; title: string; severity: string; status: string; decision?: string }[];
   activity: { id: string; time: string; title: string; result: string }[];
   blockedActions: number | null;
   completedTests: number | null;
