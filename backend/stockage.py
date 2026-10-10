@@ -49,7 +49,25 @@ class _Resultat:
 
 if DATABASE_URL:
     # ------------------------------------------------------------------ Supabase / PostgreSQL
+    import psycopg
     from psycopg_pool import ConnectionPool
+
+    # Un seul essai de connexion avant tout : si le mot de passe est faux, on s'arrête tout de suite avec un
+    # message clair, au lieu de réessayer en boucle (Supabase bloquerait alors les connexions quelques minutes).
+    try:
+        psycopg.connect(DATABASE_URL, connect_timeout=10, **options_postgres()).close()
+    except psycopg.OperationalError as erreur:
+        texte = str(erreur)
+        if "password authentication failed" in texte:
+            conseil = ("mot de passe refusé. Vérifie le mot de passe dans DATABASE_URL (sans les crochets [ ]). "
+                       "S'il contient @ : / # ? % ou &, réinitialise-le dans Supabase avec uniquement lettres et chiffres.")
+        elif "ECIRCUITBREAKER" in texte:
+            conseil = "trop d'échecs récents, Supabase bloque les connexions quelques minutes. Attends puis réessaie."
+        elif "Tenant or user not found" in texte:
+            conseil = "projet introuvable. L'utilisateur doit être de la forme postgres.<identifiant du projet>."
+        else:
+            conseil = texte.splitlines()[0] if texte else type(erreur).__name__
+        raise SystemExit(f"Connexion à la base impossible : {conseil}") from None
 
     _pool = ConnectionPool(DATABASE_URL, kwargs=options_postgres(), min_size=1, max_size=5, open=True)
     atexit.register(_pool.close)
