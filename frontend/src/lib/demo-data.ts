@@ -1,5 +1,5 @@
 export type Severity = 'Critique' | 'Élevée' | 'Modérée';
-export type IncidentStatus = 'À examiner' | 'En enquête' | 'Confiné' | 'Surveillance';
+export type IncidentStatus = 'À examiner' | 'En enquête' | 'Approuvé, en attente d\'exécution' | 'Confiné' | 'Surveillance';
 export type Decision = 'pending' | 'approved' | 'rejected';
 export type TraceEvent = {
   id: string; parent_event_id: string | null; timestamp: string;
