@@ -33,6 +33,10 @@ MOCK_LLM = os.getenv("MOCK_LLM") == "1"
 MODELE = os.getenv("OPENAI_MODEL") or "gpt-5-mini"
 SEUIL_CONFIANCE = 0.7
 
+# Au plus un appel à l'IA par seconde, pour ne pas dépasser le quota OpenAI pendant les tests en série.
+from langchain_core.rate_limiters import InMemoryRateLimiter
+LIMITEUR = InMemoryRateLimiter(requests_per_second=1)
+
 # ---------------------------------------------------------------------------
 # Réglages de la règle (plus tard dans un fichier que le RSSI pourra modifier)
 # ---------------------------------------------------------------------------
@@ -109,9 +113,15 @@ def regle(etat: Etat) -> dict:
 # ---------------------------------------------------------------------------
 # Étape 2 : l'enquêteur (le seul appel à l'IA)
 # ---------------------------------------------------------------------------
+_jetons: dict[str, str] = {}  # vrai secret -> jeton. Plus tard : rangé dans le coffre à secrets, pas en mémoire.
+
+
 def masquer(texte: str) -> str:
-    """On ne montre jamais un vrai secret à l'IA."""
-    return FORMAT_SECRET.sub("[SECRET_MASQUÉ]", texte)
+    """On ne montre jamais un vrai secret à l'IA : chaque secret devient un jeton stable (SECRET_001, SECRET_002...).
+    Le même secret donne toujours le même jeton, ce qui permet de savoir lequel révoquer."""
+    def jeton(m):
+        return _jetons.setdefault(m.group(0), f"SECRET_{len(_jetons) + 1:03d}")
+    return FORMAT_SECRET.sub(jeton, texte)
 
 
 def enqueteur(etat: Etat) -> dict:
@@ -142,7 +152,7 @@ def enqueteur(etat: Etat) -> dict:
             "des événements qui la prouvent, uniquement parmi ceux de la liste. N'invente rien. "
             "Propose une seule action de confinement, la plus ciblée possible, et décris son impact pour les employés."
         )
-        modele = init_chat_model(f"openai:{MODELE}")
+        modele = init_chat_model(f"openai:{MODELE}", rate_limiter=LIMITEUR)
         resultat = modele.with_structured_output(SortieEnqueteur).invoke(consigne)
     return {"enquete": resultat.model_dump()}
 
