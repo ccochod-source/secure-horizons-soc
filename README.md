@@ -17,7 +17,7 @@ Ouvrir http://localhost:3100. Le serveur de développement écoute sur 127.0.0.1
 
 La connexion Supabase est conservée. `/api/soc` vérifie un accès en lecture à `inventory` (une ligne, uniquement son identifiant). La clé privée reste côté serveur, avec les noms `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` ou les noms existants `DATABASE_URL` / `service_role_key`.
 
-**Les agents et le workflow ne sont pas encore raccordés.** L’API renvoie donc des listes vides et des mesures nulles. Les noms présents dans l’inventaire, les incidents et les benchmarks préparés en base ne sont pas présentés comme une activité réelle. La base n’est ni effacée ni modifiée. Aucun mode de simulation, faux rejeu ou fausse validation ne figure dans l’interface.
+**Les agents et le workflow ne sont pas encore raccordés à cette interface.** L’API renvoie donc des listes vides et des mesures nulles. Les noms présents dans l’inventaire, les incidents et les benchmarks préparés en base ne sont pas présentés comme une activité réelle. Le front n’efface et ne modifie pas la base. Aucun mode de simulation, faux rejeu ou fausse validation ne figure dans l’interface.
 
 - Agents branchés : 0.
 - Validations, incidents, blocages et tests : non mesurés tant que le workflow n’est pas intégré.
@@ -40,3 +40,12 @@ node --experimental-strip-types --test tests/*.test.ts
 ```
 
 La planche dans `design/` est une ancienne recherche visuelle et ne représente plus l’interface actuelle.
+
+## Agent développeur et pipeline
+
+L’assistant RAG Python est dans `victim_agent/`. Il lit `documents` dans Supabase
+à chaque question, envoie les extraits utiles à OpenAI et retourne une réponse
+avec ses sources. Il enregistre les traces dans `events`. Le [guide de démarrage](victim_agent/README.md)
+décrit l’API locale sur le port 8001. Le chat de l’interface Next.js relaie les
+questions vers cette API par une route serveur locale ; le jeton de passerelle
+reste côté serveur. La pipeline de défense d’Alex reste distincte.

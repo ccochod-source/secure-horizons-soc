@@ -5,3 +5,10 @@ out/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+.venv/
+__pycache__/
+.pytest_cache/
+.runtime/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

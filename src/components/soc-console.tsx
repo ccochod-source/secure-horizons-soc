@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import type { SocOverview } from '@/lib/soc-overview';
 
+type RAGSource = { ref: string; title: string; type?: string | null; source?: string | null };
+type RAGReply = { answer: string; sources: RAGSource[]; model: string; documents_found: number };
+
 function Metric({ label, value, caption }: { label: string; value: string | number; caption: string }) {
   return <div className="metric"><p>{label}</p><strong>{value}</strong><span>{caption}</span></div>;
 }
@@ -16,6 +19,39 @@ export function SocConsole() {
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
   const [refresh, setRefresh] = useState(0);
+  const [question, setQuestion] = useState('');
+  const [ragReply, setRagReply] = useState<RAGReply | null>(null);
+  const [ragError, setRagError] = useState('');
+  const [asking, setAsking] = useState(false);
+
+  async function askRag(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || asking) return;
+    setAsking(true);
+    setRagError('');
+    setRagReply(null);
+    try {
+      const response = await fetch('/api/rag/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmed }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : 'L’agent RAG n’a pas pu répondre.';
+        throw new Error(message);
+      }
+      if (!isRAGReply(data)) throw new Error('La réponse de l’agent est invalide.');
+      setRagReply(data);
+    } catch (cause) {
+      setRagError(cause instanceof Error ? cause.message : 'L’agent RAG est momentanément indisponible.');
+    } finally {
+      setAsking(false);
+    }
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -72,6 +108,18 @@ export function SocConsole() {
         <Metric label="Actions bloquées" value={ready ? snapshot.blockedActions ?? '—' : '—'} caption="Résultats d’exécution uniquement" />
       </section>
 
+      <section className="panel rag-panel" aria-labelledby="rag-title">
+        <div className="panel-heading"><div><h2 id="rag-title">Assistant développeur</h2><p className="rag-intro">Posez une question sur les connaissances présentes dans la base.</p></div><span>Agent RAG · sources affichées</span></div>
+        <form className="rag-form" onSubmit={askRag}>
+          <label className="sr-only" htmlFor="rag-question">Votre question</label>
+          <textarea id="rag-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ex. Quelle est la procédure de revue d’une pull request ?" maxLength={4000} rows={3} disabled={asking} />
+          <div className="rag-form-footer"><span>{question.length}/4 000 caractères</span><button type="submit" disabled={asking || !question.trim()}>{asking ? 'Recherche en cours…' : 'Interroger la base'}</button></div>
+        </form>
+        {ragError ? <div className="error-message rag-error" role="alert">{ragError}</div> : null}
+        {asking ? <p className="rag-status" role="status">Recherche dans les documents puis préparation de la réponse…</p> : null}
+        {ragReply ? <div className="rag-result" aria-live="polite"><h3>Réponse</h3><p className="rag-answer">{ragReply.answer}</p><div className="rag-sources"><strong>Sources consultées ({ragReply.documents_found})</strong>{ragReply.sources.length ? <ul>{ragReply.sources.map((source) => <li key={`${source.ref}-${source.title}`}><span>{source.ref}</span><div><strong>{source.title}</strong>{source.source ? <small>{source.source}</small> : null}</div></li>)}</ul> : <p>Aucun document pertinent trouvé dans la base.</p>}</div></div> : null}
+      </section>
+
       {!ready ? <div className="notice"><strong>Les agents ne sont pas encore branchés.</strong><p>Les résultats resteront vides jusqu’à leur raccordement. Les exemples préparés dans la base ne sont pas affichés.</p></div> : null}
       {error ? <div className="error-message" role="alert"><strong>Connexion indisponible</strong><p>{error}</p><p>Les indicateurs ne sont pas actualisés.</p></div> : null}
 
@@ -109,6 +157,13 @@ export function SocConsole() {
       <footer>Interface de travail · Lecture seule · Aucun agent ni résultat simulé</footer>
     </main>
   </div>;
+}
+
+function isRAGReply(value: unknown): value is RAGReply {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Partial<RAGReply>;
+  return typeof data.answer === 'string' && typeof data.model === 'string' && Number.isInteger(data.documents_found)
+    && Array.isArray(data.sources) && data.sources.every((source) => typeof source?.ref === 'string' && typeof source?.title === 'string');
 }
 
 function isOverview(value: unknown): value is SocOverview {
