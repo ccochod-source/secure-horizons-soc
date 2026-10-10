@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'TRACE — Agent Security Operations',
-  description: 'Console de démonstration pour enquêter sur les incidents des agents IA.',
+  title: 'TRACE — Vue d’ensemble',
+  description: 'Tableau de bord de travail : connexions, agents, packages et incidents.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
