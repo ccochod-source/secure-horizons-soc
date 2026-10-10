@@ -82,6 +82,14 @@ def is_token(text: str) -> bool:
     return TOKEN_RE.fullmatch(text) is not None
 
 
+DECOY_PREFIX = "LEURRE"
+
+
+def is_decoy_token(token: str) -> bool:
+    """Vrai pour le jeton d'un honeytoken : rien à révoquer, hors du rayon d'impact réel."""
+    return is_token(token) and token.startswith(DECOY_PREFIX + "_")
+
+
 def _looks_random(candidate: str) -> bool:
     """Longue chaîne aléatoire : mélange de casse et de chiffres, entropie élevée."""
     if not (any(c.isdigit() for c in candidate) and any(c.islower() for c in candidate)

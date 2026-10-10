@@ -1,6 +1,6 @@
-# Backend — passerelle, coffre, couche de leurres et contrôle des packages
+# Backend — passerelle, coffre, leurres, contrôle des packages et environnement attaqué
 
-Quatre briques de l'architecture, en Python + FastAPI. Elles écrivent dans le
+Cinq briques de l'architecture, en Python + FastAPI. Elles écrivent dans le
 schéma `public` du projet Supabase et lisent l'annuaire `public.employees`.
 
 ## Démarrer
@@ -70,6 +70,34 @@ réponse finale de l'agent ; les routes HTTP correspondantes rendent `diverted`.
   prompt envoyé à un LLM défenseur : il alimente la métrique « secrets en clair
   vus par les LLM » (objectif 0).
 
+## Environnement attaqué (`env_attacked/`)
+
+L'agent victime `DevBot` et ses serveurs MCP, lancés dans le même processus que
+la passerelle. L'agent n'appelle jamais un serveur directement : tout passe par
+`gateway.dispatch`, `record_query`, `record_document` et `record_response`.
+
+- Serveurs enregistrés au démarrage : `mcp_docs` (`search_docs`), `mcp_fichiers`
+  (`list_files`, `read_file`), `mcp_messagerie` (`send_message`), `mcp_packages`
+  (`install_package`) et `mcp_deploy_helper`, le serveur tiers dont la
+  description d'outil est piégée.
+- `POST /chat` : `{"question": "…", "poisoned": false}`. Avec `poisoned: true`,
+  le modèle voit aussi l'outil du serveur piégé (scénario 1).
+- Modèle OpenAI en température 0, graine fixe, prompt figé (`SYSTEM_PROMPT`).
+  Sans `OPENAI_API_KEY`, `/chat` répond 503 et la recherche se fait par mots.
+- Au démarrage, les documents sans embedding sont calculés, documents pièges
+  compris (`text-embedding-3-small`, 1536 dimensions).
+
+## Scripts (`scripts/`)
+
+```sh
+.venv/bin/python -m scripts.smoke_db             # vraies écritures en base, vérifiées puis nettoyées
+.venv/bin/python -m scripts.demo plant           # document piégé du scénario package
+.venv/bin/python -m scripts.demo scenario1       # lance le scénario 1 et vérifie sa trace
+.venv/bin/python -m scripts.demo package         # idem pour le scénario package
+.venv/bin/python -m scripts.demo export <trace_id>   # vers demo/trace_scenario1.json
+.venv/bin/python -m scripts.demo replay          # plan B : réinjecte la trace enregistrée
+```
+
 ## Couche de leurres (`decoys/`)
 
 Premier bloc de protection. Un leurre n'a aucune raison d'être lu par un usage
@@ -101,7 +129,12 @@ de réel.
   Au déclenchement : alerte `critical` (`source = 'detecteur_piege'`,
   `signal = 'decoy_access'`), compteur de `public.decoys`, événements
   `decoy_access` puis `session_diverted`. Ni la trace ni l'alerte ne citent la
-  valeur, seulement le nom du leurre.
+  valeur, seulement le nom du leurre et son jeton.
+- **Jetons du coffre** — le détecteur transmet les valeurs des leurres au
+  coffre : elles reçoivent un jeton `LEURRE_<TYPE>_<n>` (le même pour la forme
+  brute et la forme encodée), jamais `SECRET_…`. `vault.is_decoy_token(jeton)`
+  permet au Confineur de ne pas révoquer un leurre et d'exclure celui-ci du
+  rayon d'impact réel. Le type se lit dans `token_vault.token_prefix`.
 - **Bac à sable** (`tarpit.py`) — une session déroutée reçoit des réponses
   factices, volumineuses et répétitives (`TARPIT_PAYLOAD_CHARS`, 120 000
   caractères par défaut), sans aucun accès réel. Garde-fou : il refuse toute

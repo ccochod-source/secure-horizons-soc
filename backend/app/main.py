@@ -18,6 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from common.config import REPO_ROOT, load_settings
 from common.db import ROLE_GATEWAY, Database
 from decoys import DecoyDefense, Detector, PostgresDecoyStore, Seeder, Tarpit
+from env_attacked import OpenAIClient, PostgresCompanyData, VictimAgent, build_servers, embed_documents
+from env_attacked.routes import router as chat_router
 from gateway.events import PostgresEventStore
 from gateway.proxy import Gateway
 from gateway.routes import router
@@ -67,8 +69,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.error("aucun leurre reconnu : la couche de leurres ne déclenchera rien")
         decoys = DecoyDefense(detector, Tarpit(settings.tarpit_payload_chars))
         gateway = Gateway(events, pseudonymizer, decoys=decoys, packages=packages)
-        for index, url in enumerate(settings.mcp_upstream_urls, start=1):
-            upstream = McpUpstream(f"mcp_{index}", url)
+        # Environnement attaqué : ses serveurs MCP tournent dans ce processus, derrière la passerelle.
+        company = PostgresCompanyData(db)
+        openai = (OpenAIClient(http, settings.openai_api_key, settings.openai_model)
+                  if settings.openai_api_key else None)
+        if openai is not None:
+            try:
+                logger.info("embeddings calculés pour %d document(s)", await embed_documents(company, openai))
+            except Exception:
+                logger.exception("calcul des embeddings en échec : recherche documentaire par mots")
+        servers = [(server.name, server) for server in build_servers(company, openai)]
+        servers += [(f"mcp_{index}", url) for index, url in enumerate(settings.mcp_upstream_urls, start=1)]
+        for name, server in servers:
+            upstream = McpUpstream(name, server)
             await upstream.start()
             upstreams.append(upstream)
             await gateway.register(upstream)
@@ -77,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.gateway_token = settings.gateway_token
         app.state.packages = packages
         app.state.decoys = decoys
+        app.state.victim = VictimAgent(gateway, openai) if openai is not None else None
         app.state.analyst_auth = (
             SupabaseAuth(http, settings.supabase_url, settings.supabase_api_key)
             if settings.supabase_url and settings.supabase_api_key else None
@@ -96,6 +110,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(
     *, gateway: Gateway | None = None, gateway_token: str | None = None,
     packages: PackageReviewer | None = None, analyst_auth: AnalystAuth | None = None,
+    victim: VictimAgent | None = None,
 ) -> FastAPI:
     """Sans argument : application réelle. Avec une passerelle : application de test."""
     load_dotenv(REPO_ROOT / ".env")
@@ -105,6 +120,7 @@ def create_app(
         app.state.gateway_token = gateway_token
         app.state.packages = packages
         app.state.analyst_auth = analyst_auth
+        app.state.victim = victim
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3100")],
@@ -113,6 +129,7 @@ def create_app(
     )
     app.include_router(router)
     app.include_router(packages_router)
+    app.include_router(chat_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

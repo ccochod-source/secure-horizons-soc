@@ -26,6 +26,8 @@ class Settings:
     supabase_api_key: str | None = None  # clé envoyée à Supabase Auth pour valider un jeton d'analyste
     package_quarantine_dir: Path = REPO_ROOT / "backend" / ".quarantine"
     package_agent_env: Path | None = None  # absent : installations enregistrées, non réalisées
+    openai_api_key: str | None = None  # absent : pas d'agent victime, recherche documentaire par mots
+    openai_model: str = "gpt-4o-mini"
     decoys_seed_on_start: bool = True
     tarpit_payload_chars: int = 120_000
 
@@ -55,6 +57,8 @@ def load_settings() -> Settings:
         supabase_api_key=api_key,
         package_quarantine_dir=Path(quarantine_dir) if quarantine_dir else REPO_ROOT / "backend" / ".quarantine",
         package_agent_env=Path(agent_env) if agent_env else None,
+        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
+        openai_model=os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o-mini",
         decoys_seed_on_start=os.getenv("DECOYS_SEED_ON_START", "true").strip().lower() not in ("0", "false", "no"),
         tarpit_payload_chars=_positive_int("TARPIT_PAYLOAD_CHARS", 120_000),
     )

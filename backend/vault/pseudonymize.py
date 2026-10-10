@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -43,6 +44,19 @@ class Pseudonymizer:
         # Cache valeur → jeton, indexé par HMAC pour ne pas garder de clair en mémoire.
         self._cache_key = secrets.token_bytes(32)
         self._cache: dict[bytes, str] = {}
+        # Honeytokens connus : forme repérable (brute ou encodée) → (valeur brute, préfixe du jeton).
+        self._decoys: dict[str, tuple[str, str]] = {}
+        self._decoys_re: re.Pattern[str] | None = None
+
+    def set_decoys(self, forms: dict[str, tuple[str, str]]) -> None:
+        """Valeurs des leurres plantés : elles reçoivent un jeton LEURRE_…, jamais SECRET_…
+
+        Une forme encodée renvoie à la valeur brute, donc au même jeton qu'elle.
+        """
+        self._decoys = dict(forms)
+        self._decoys_re = re.compile("|".join(
+            re.escape(form) for form in sorted(forms, key=len, reverse=True))) if forms else None
+        self._cache.clear()
 
     async def pseudonymize(self, obj: Any) -> Pseudonymized:
         """Rend une copie JSON-compatible de obj où chaque valeur sensible est un jeton."""
@@ -82,7 +96,13 @@ class Pseudonymizer:
                 for start in _occurrences(text, value)
             ]
             detections = _merge(detections, reported)
-        if sensitive and not any(d.start == 0 and d.end == len(text) for d in detections):
+        lures: list[Detection] = []
+        if self._decoys_re is not None:
+            for found in self._decoys_re.finditer(text):
+                value, prefix = self._decoys[found.group()]
+                lures.append(Detection(prefix, value, found.start(), found.end(), SECRET, -1))
+            detections = _merge(detections, lures)
+        if sensitive and not lures and not any(d.start == 0 and d.end == len(text) for d in detections):
             # Valeur d'un champ « password », « api_key »… : secrète en entier.
             return [Detection("SECRET_GENERIC", text, 0, len(text), SECRET, 0)]
         return detections
