@@ -22,7 +22,7 @@ La commande refuse de démarrer si un port est déjà occupé ; elle n’arrête
 
 - `SUPABASE_URL` : URL HTTPS du projet pour l’interface et le RAG.
 - `SUPABASE_SERVICE_ROLE_KEY` : clé serveur, jamais envoyée au navigateur.
-- `DATABASE_URL` : connexion PostgreSQL pour la nouvelle passerelle. Elle ne remplace pas `SUPABASE_URL`.
+- `DATABASE_URL` : connexion PostgreSQL pour la passerelle et le stockage de la défense. Elle ne remplace pas `SUPABASE_URL`.
 - `OPENAI_API_KEY_RAG` et `RAG_MODEL` : assistant en lecture seule.
 - `OPENAI_API_KEY_ENQUETEUR` : utilisée par le lancement groupé de la défense, à défaut `OPENAI_API_KEY`.
 - `PASSERELLE_TOKEN`, `ANALYSTE_TOKEN`, `VICTIM_GATEWAY_TOKEN` : authentification des services locaux.
@@ -33,7 +33,7 @@ Les modèles se configurent avec leur identifiant d’API exact, pas leur nom d�
 
 L’utilisateur pose une question → le RAG lit `documents` dans Supabase → OpenAI prépare une réponse sourcée → les traces sont ajoutées à `events` → elles sont envoyées au serveur d’Alex. L’interface distingue une livraison confirmée d’une livraison incertaine.
 
-Les incidents et décisions humaines d’Alex sont conservés dans `.runtime/` (SQLite). Sans connecteur de confinement effectif, l’approbation reste en attente d’exécution : elle ne signifie pas qu’un outil est bloqué.
+Avec `DATABASE_URL`, les incidents, décisions et checkpoints d’Alex sont conservés dans le schéma PostgreSQL `trace`. Sans cette variable, le backend utilise SQLite dans `.runtime/`. Les anciens fichiers SQLite sont conservés ; ils ne sont pas migrés automatiquement vers PostgreSQL. Sans connecteur de confinement effectif, l’approbation reste en attente d’exécution : elle ne signifie pas qu’un outil est bloqué.
 
 ## Passerelle, coffre, leurres et packages
 

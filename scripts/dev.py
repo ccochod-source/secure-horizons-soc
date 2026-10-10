@@ -39,6 +39,15 @@ def main():
             probe.settimeout(0.3)
             if probe.connect_ex(('127.0.0.1', port)) == 0:
                 raise SystemExit(f'{name} : port {port} déjà occupé. Aucun processus existant n’a été arrêté.')
+    # Validate the shared database before starting any children. A failed
+    # connection must not leave half of the stack running or expose the DSN.
+    if config.get('DATABASE_URL'):
+        import psycopg
+        try:
+            with psycopg.connect(config['DATABASE_URL'], connect_timeout=5, sslmode='require') as conn:
+                conn.execute('select 1')
+        except psycopg.Error:
+            raise SystemExit('Connexion PostgreSQL impossible : vérifier DATABASE_URL dans Supabase → Connect. Aucun service lancé.')
     config.setdefault('GATEWAY_TOKEN', settings.gateway_token)
     config.setdefault('DECOYS_SEED_ON_START', 'false')
     children = []
