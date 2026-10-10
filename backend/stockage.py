@@ -19,6 +19,10 @@ import re
 import sqlite3
 import threading
 
+from dotenv import load_dotenv
+
+load_dotenv()  # DATABASE_URL peut venir du secret Codespaces ou du fichier .env
+
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SCHEMA = os.getenv("DATABASE_SCHEMA", "trace")
 if not re.fullmatch(r"[a-z_][a-z0-9_]*", SCHEMA):
