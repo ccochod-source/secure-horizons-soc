@@ -28,7 +28,7 @@ class Database:
             max_size=max_size,
             open=False,
             # prepare_threshold=None : pas de requêtes préparées, exigé par le pooler.
-            kwargs={"prepare_threshold": None, "row_factory": dict_row},
+            kwargs={"prepare_threshold": None, "row_factory": dict_row, "sslmode": "require"},
         )
 
     async def open(self) -> None:

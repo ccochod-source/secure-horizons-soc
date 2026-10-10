@@ -6,8 +6,20 @@
     "dev": "next dev --hostname 127.0.0.1 --port 3100",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3100",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:all": ".venv/bin/python scripts/dev.py",
+    "dev:full": ".venv/bin/python scripts/dev.py --gateway"
   },
-  "dependencies": {"next": "^16.0.0", "react": "^19.0.0", "react-dom": "^19.0.0", "lucide-react": "^0.468.0"},
-  "devDependencies": {"typescript": "^5.0.0", "@types/node": "^22.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0"}
+  "dependencies": {
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
 }

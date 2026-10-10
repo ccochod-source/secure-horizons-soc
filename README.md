@@ -1,51 +1,59 @@
-# TRACE — Interface de travail
+# TRACE — Copilote SOC
 
-Tableau de bord provisoire du hackathon Secure Horizons : une page blanche et simple avec les indicateurs, connexions, agents, packages à valider, incidents, activité et résultats des tests.
+Interface provisoire, assistant RAG Supabase et pipeline de défense d’Alex, avec une passerelle de traçage, un coffre, des leurres et le contrôle des packages.
 
-## Démarrer
+## Démarrer depuis la racine
 
-Node.js 20.9 ou supérieur, depuis la racine du dépôt :
+Node.js 20.9+ et Python 3.11+. Installer les dépendances dans un environnement local :
 
 ```sh
 npm ci
-npm run dev
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+npm run dev:all
 ```
 
-Ouvrir http://localhost:3100. Le serveur de développement écoute sur 127.0.0.1.
+Interface : http://127.0.0.1:3100. Défense : port 8000. RAG simple : port 8001.
+La commande refuse de démarrer si un port est déjà occupé ; elle n’arrête aucun autre serveur. Ctrl+C arrête uniquement les processus qu’elle a lancés.
 
-## État réel
+## Configuration privée
 
-La connexion Supabase est conservée. `/api/soc` vérifie un accès en lecture à `inventory` (une ligne, uniquement son identifiant). La clé privée reste côté serveur, avec les noms `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` ou les noms existants `DATABASE_URL` / `service_role_key`.
+`.env.example` décrit les variables, `.env` contient les accès et `.env.victim` les jetons locaux. Ces fichiers privés sont ignorés par Git.
 
-**Les agents et le workflow ne sont pas encore raccordés à cette interface.** L’API renvoie donc des listes vides et des mesures nulles. Les noms présents dans l’inventaire, les incidents et les benchmarks préparés en base ne sont pas présentés comme une activité réelle. Le front n’efface et ne modifie pas la base. Aucun mode de simulation, faux rejeu ou fausse validation ne figure dans l’interface.
+- `SUPABASE_URL` : URL HTTPS du projet pour l’interface et le RAG.
+- `SUPABASE_SERVICE_ROLE_KEY` : clé serveur, jamais envoyée au navigateur.
+- `DATABASE_URL` : connexion PostgreSQL pour la nouvelle passerelle. Elle ne remplace pas `SUPABASE_URL`.
+- `OPENAI_API_KEY_RAG` et `RAG_MODEL` : assistant en lecture seule.
+- `OPENAI_API_KEY_ENQUETEUR` : utilisée par le lancement groupé de la défense, à défaut `OPENAI_API_KEY`.
+- `PASSERELLE_TOKEN`, `ANALYSTE_TOKEN`, `VICTIM_GATEWAY_TOKEN` : authentification des services locaux.
 
-- Agents branchés : 0.
-- Validations, incidents, blocages et tests : non mesurés tant que le workflow n’est pas intégré.
-- Rafraîchissement automatique toutes les 15 secondes, ou bouton Actualiser.
-- Erreur de connexion explicite ; aucun remplacement par des données fictives.
-- Validation humaine et actions : non raccordées, aucune écriture depuis cette interface.
+Les modèles se configurent avec leur identifiant d’API exact, pas leur nom d’affichage. Le backend de défense utilise `OPENAI_MODEL` ou `AGENT_MODEL`, le RAG utilise `RAG_MODEL`.
 
-Au raccordement des vrais agents, adapter le lecteur serveur au contrat `SocOverview` dans `src/lib/soc-overview.ts`, après vérification des endpoints, des événements réellement produits et de leur provenance. Ne pas activer la pipeline parce qu’un agent est simplement inventorié ou qu’une branche existe sur GitHub. Le mapper historique `soc-data.ts` reste disponible pour l’intégration ultérieure des tables d’incidents.
+## Parcours actuellement raccordé
 
-## Accès
+L’utilisateur pose une question → le RAG lit `documents` dans Supabase → OpenAI prépare une réponse sourcée → les traces sont ajoutées à `events` → elles sont envoyées au serveur d’Alex. L’interface distingue une livraison confirmée d’une livraison incertaine.
 
-Passerelle réservée au serveur local de développement : les accès en production, les origines externes et les requêtes non locales sont refusés. Un déploiement partagé nécessitera une authentification et des autorisations analystes. Les décisions doivent être authentifiées et exécutées par le backend ; un statut approuvé ne prouve pas une exécution.
+Les incidents et décisions humaines d’Alex sont conservés dans `.runtime/` (SQLite). Sans connecteur de confinement effectif, l’approbation reste en attente d’exécution : elle ne signifie pas qu’un outil est bloqué.
 
-## Vérification
+## Passerelle, coffre, leurres et packages
 
 ```sh
-npm run typecheck
-# Tests : Node.js 22.6+
-node --experimental-strip-types --test tests/*.test.ts
+npm run dev:full
 ```
 
-La planche dans `design/` est une ancienne recherche visuelle et ne représente plus l’interface actuelle.
+Ajoute `app.main:app` sur le port 8002. Une connexion PostgreSQL fonctionnelle, le schéma de Léon et les rôles de la migration dans `supabase/migrations/` sont requis. Cette application fournit aussi un agent victime de démonstration utilisant des outils : il est distinct du RAG simple du front.
 
-## Agent développeur et pipeline
+Le semis de leurres est désactivé par défaut ; l’activer explicitement pour une démonstration. Sans `PACKAGE_AGENT_ENV`, les installations de packages sont simulées et marquées comme telles. Les agents de défense d’Alex ne reçoivent pas encore automatiquement les traces de cette nouvelle passerelle ; ses alertes en Supabase et les incidents d’Alex restent deux circuits distincts.
 
-L’assistant RAG Python est dans `victim_agent/`. Il lit `documents` dans Supabase
-à chaque question, envoie les extraits utiles à OpenAI et retourne une réponse
-avec ses sources. Il enregistre les traces dans `events`. Le [guide de démarrage](victim_agent/README.md)
-décrit l’API locale sur le port 8001. Le chat de l’interface Next.js relaie les
-questions vers cette API par une route serveur locale ; le jeton de passerelle
-reste côté serveur. La pipeline de défense d’Alex reste distincte.
+Guides : [backend](backend/README.md), [RAG](victim_agent/README.md).
+
+## Vérifier
+
+```sh
+.venv/bin/python -m pytest -q
+npm run build
+npm run typecheck
+node --test tests/*.test.ts
+```
+
+Les tests Python utilisent des modèles et bases isolés : ils ne prouvent pas à eux seuls que la passerelle démarre contre Supabase. L’interface affiche les connexions et résultats réels, sans fabriquer de succès.
