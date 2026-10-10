@@ -1,0 +1,7 @@
+{
+  "agent_id": "docs-01",
+  "events": [
+    {"id": "evt-101", "parent_event_id": null, "timestamp": "14:40:00", "actor": "Documentation", "type": "instruction", "title": "Question d'un employé", "description": "Comment déployer la version 3 ?", "tool": "agent.input", "resource": "chat/employe", "result": "allowed"},
+    {"id": "evt-102", "parent_event_id": "evt-101", "timestamp": "14:40:02", "actor": "Documentation", "type": "retrieval", "title": "Document récupéré", "description": "Procédure de déploiement approuvée.", "tool": "knowledge.search", "resource": "docs/deployment-v2.md", "result": "allowed"}
+  ]
+}
