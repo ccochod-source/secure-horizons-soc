@@ -14,5 +14,6 @@ class Session:
     trace_id: UUID = field(default_factory=uuid4)
     run_id: UUID | None = None
     last_event: UUID | None = None  # cause du prochain événement
+    closed: bool = False
     diverted: bool = False  # posée par la couche de leurres, jamais retirée
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)

@@ -33,7 +33,7 @@ Les modèles se configurent avec leur identifiant d’API exact, pas leur nom d�
 
 L’utilisateur pose une question → le RAG lit `documents` dans Supabase → OpenAI prépare une réponse sourcée → les traces sont ajoutées à `events` → elles sont envoyées au serveur d’Alex. L’interface distingue une livraison confirmée d’une livraison incertaine.
 
-Avec `DATABASE_URL`, les incidents, décisions et checkpoints d’Alex sont conservés dans le schéma PostgreSQL `trace`. Sans cette variable, le backend utilise SQLite dans `.runtime/`. Les anciens fichiers SQLite sont conservés ; ils ne sont pas migrés automatiquement vers PostgreSQL. Sans connecteur de confinement effectif, l’approbation reste en attente d’exécution : elle ne signifie pas qu’un outil est bloqué.
+Avec `DATABASE_URL`, les incidents, décisions et checkpoints d’Alex sont conservés dans le schéma PostgreSQL `trace`. Sans cette variable, le backend utilise SQLite dans `.runtime/`. Les anciens fichiers SQLite sont conservés ; ils ne sont pas migrés automatiquement vers PostgreSQL. Avec dev:full, la passerelle confirme les suspensions réellement appliquées. Sans ce connecteur, l’approbation reste en attente d’exécution.
 
 ## Passerelle, coffre, leurres et packages
 
@@ -43,7 +43,7 @@ npm run dev:full
 
 Ajoute `app.main:app` sur le port 8002. Une connexion PostgreSQL fonctionnelle, le schéma de Léon et les rôles de la migration dans `supabase/migrations/` sont requis. Cette application fournit aussi un agent victime de démonstration utilisant des outils : il est distinct du RAG simple du front.
 
-Le semis de leurres est désactivé par défaut ; l’activer explicitement pour une démonstration. Sans `PACKAGE_AGENT_ENV`, les installations de packages sont simulées et marquées comme telles. Les agents de défense d’Alex ne reçoivent pas encore automatiquement les traces de cette nouvelle passerelle ; ses alertes en Supabase et les incidents d’Alex restent deux circuits distincts.
+Le semis de leurres est désactivé par défaut ; l’activer explicitement pour une démonstration. Sans `PACKAGE_AGENT_ENV`, les installations de packages sont simulées et marquées comme telles. Les conversations terminées de cette passerelle sont transmises aux agents de défense d’Alex. Les alertes packages restent dans Supabase et sont affichées comme revues ; une demande de package ne devient pas automatiquement un incident d’exfiltration.
 
 Guides : [backend](backend/README.md), [RAG](victim_agent/README.md).
 
@@ -57,3 +57,13 @@ node --test tests/*.test.ts
 ```
 
 Les tests Python utilisent des modèles et bases isolés : ils ne prouvent pas à eux seuls que la passerelle démarre contre Supabase. L’interface affiche les connexions et résultats réels, sans fabriquer de succès.
+
+## Intégration finale locale
+
+`npm run dev:full` lance les quatre services. La passerelle envoie les conversations terminées à Alex via `/gateway/sessions/{trace_id}/complete` ; `/chat` termine et transmet automatiquement les conversations de l’agent avec outils. Le RAG simple garde son parcours de questions et réponses.
+
+Après approbation d’un incident, Alex appelle `/confinement` sur 8002. Seule `suspendre_outil` est actuellement exécutée ; toute autre action renvoie une erreur explicite. La suspension est limitée à l’agent et à l’outil ciblés, et survit au redémarrage dans `.runtime/gateway-state.sqlite`. Ce fichier et les accusés de livraison doivent être conservés. Une livraison incertaine n’est pas retransmise automatiquement : vérifier les incidents avant toute reprise manuelle.
+
+Le front permet d’analyser un package et d’approuver/refuser une revue après connexion Supabase Auth. Le compte doit figurer dans `public.analysts` avec `can_approve_packages=true`. Le compte choisi par Clément est configuré ; ses identifiants initiaux sont dans `.env.analyst`, ignoré par Git, sans e-mail envoyé. Aucun compte Auth n’est créé automatiquement au démarrage.
+
+Sans `PACKAGE_AGENT_ENV`, les installations restent simulées. La messagerie de démonstration écrit dans `mailbox` ; aucun message n’est envoyé à une boîte externe. Le contrôle de packages et la règle de sortie sensible ne garantissent pas que tous les documents de la base sont sains.

@@ -30,7 +30,13 @@ async def chat(body: ChatIn, request: Request) -> dict[str, Any]:
     if victim is None:
         raise HTTPException(status_code=503, detail="Agent victime non configuré (OPENAI_API_KEY absent).")
     try:
-        return await victim.chat(body.question, user_id=body.user_id, poisoned=body.poisoned, run_id=body.run_id)
+        result = await victim.chat(body.question, user_id=body.user_id, poisoned=body.poisoned, run_id=body.run_id)
+        bridge = getattr(request.app.state, "defense", None)
+        if bridge:
+            session = request.app.state.gateway.session(UUID(result["trace_id"]))
+            session.closed = True
+            result["pipeline_delivery"] = await bridge.complete(session)
+        return result
     except LLMError as exc:
         raise HTTPException(status_code=502, detail=f"Modèle indisponible : {exc}") from None
     except TraceUnavailable:

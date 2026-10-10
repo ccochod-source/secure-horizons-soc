@@ -21,8 +21,9 @@ from decoys import DecoyDefense, Detector, PostgresDecoyStore, Seeder, Tarpit
 from env_attacked import OpenAIClient, PostgresCompanyData, VictimAgent, build_servers, embed_documents
 from env_attacked.routes import router as chat_router
 from gateway.events import PostgresEventStore
+from gateway.defense import DefenseBridge
 from gateway.proxy import Gateway
-from gateway.routes import router
+from gateway.routes import router, confinement_router
 from gateway.upstream import McpUpstream
 from packages import AgentEnvInstaller, LocalQuarantine, PackageReviewer, PostgresReviewStore
 from packages.routes import AnalystAuth, SupabaseAuth
@@ -68,7 +69,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         if await detector.load() == 0:
             logger.error("aucun leurre reconnu : la couche de leurres ne déclenchera rien")
         decoys = DecoyDefense(detector, Tarpit(settings.tarpit_payload_chars))
-        gateway = Gateway(events, pseudonymizer, decoys=decoys, packages=packages)
+        bridge = DefenseBridge(db, http, os.getenv("ALEX_API_URL", "http://127.0.0.1:8000"),
+                               os.getenv("PASSERELLE_TOKEN", ""), REPO_ROOT / ".runtime/gateway-state.sqlite")
+        gateway = Gateway(events, pseudonymizer, decoys=decoys, packages=packages, defense=bridge)
+        app.state.defense = bridge
+        app.state.confinement_token = os.getenv("CONFINEMENT_TOKEN", "")
         # Environnement attaqué : ses serveurs MCP tournent dans ce processus, derrière la passerelle.
         company = PostgresCompanyData(db)
         openai = (OpenAIClient(http, settings.openai_api_key, settings.openai_model)
@@ -128,6 +133,7 @@ def create_app(
         allow_headers=["authorization", "content-type"],
     )
     app.include_router(router)
+    app.include_router(confinement_router)
     app.include_router(packages_router)
     app.include_router(chat_router)
 

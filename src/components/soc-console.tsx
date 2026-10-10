@@ -25,6 +25,26 @@ export function SocConsole() {
   const [asking, setAsking] = useState(false);
   const [decisionError, setDecisionError] = useState('');
   const [decidingId, setDecidingId] = useState('');
+  const [packageName, setPackageName] = useState('');
+  const [registry, setRegistry] = useState('npm');
+  const [packageMessage, setPackageMessage] = useState('');
+  const [packageBusy, setPackageBusy] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [analystAccess, setAnalystAccess] = useState('');
+  async function packageAction(operation: string, extra: Record<string, string> = {}) {
+    if (packageBusy) return;
+    setPackageBusy(true); setPackageMessage('');
+    try {
+      const r = await fetch('/api/packages', {method:'POST',headers:{'Content-Type':'application/json', ...(analystAccess ? {Authorization:`Bearer ${analystAccess}`} : {})},body:JSON.stringify({operation,...extra})});
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Opération refusée.');
+      if (operation === 'login') { setAnalystAccess(data.access_token); setPassword(''); setPackageMessage('Compte analyste connecté.'); }
+      else { setPackageMessage(operation === 'review' ? `Analyse terminée : ${data.result?.simulated ? 'installation simulée, aucun code exécuté' : data.result?.status || 'voir la revue'}. ${data.pipeline_delivery?.status === 'delivered' ? 'Traces transmises à la défense.' : 'Transmission à la défense non confirmée.'}` : 'Décision enregistrée.'); setRefresh(v=>v+1); }
+    } catch (e) { setPackageMessage(e instanceof Error ? e.message : 'Service indisponible.'); }
+    finally { setPackageBusy(false); }
+  }
+
 
   async function askRag(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,10 +128,10 @@ export function SocConsole() {
 
   const connected = !!snapshot?.databaseConnected && !error;
   const ready = connected && !!snapshot?.pipelineConnected;
-  const agents = ready ? snapshot.agents : [];
-  const reviews = ready ? snapshot.reviews : [];
+  const agents = connected ? snapshot!.agents : [];
+  const reviews = connected ? snapshot!.reviews : [];
   const incidents = ready ? snapshot.incidents : [];
-  const activity = ready ? snapshot.activity : [];
+  const activity = connected ? snapshot!.activity : [];
   const pending = reviews.filter(item => ['pending', 'proposed', 'pending_approval'].includes(item.status));
   const updated = snapshot ? new Date(snapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
 
@@ -127,9 +147,9 @@ export function SocConsole() {
       </div>
 
       <section className="metrics" aria-label="Indicateurs principaux">
-        <Metric label="Agents branchés" value={agents.length} caption={ready ? 'Connectés à cette interface' : 'En attente du raccordement'} />
+        <Metric label="Agents branchés" value={agents.length} caption={connected ? 'Connectés à cette interface' : 'En attente du raccordement'} />
         <Metric label="Validations en attente" value={ready ? pending.length : '—'} caption={ready ? 'Demandes à examiner' : 'Aucune demande reçue'} />
-        <Metric label="Incidents à examiner" value={ready ? incidents.filter(item => !['closed', 'contained'].includes(item.status)).length : '—'} caption={ready ? 'Incidents reçus du système' : 'Pas encore mesuré'} />
+        <Metric label="Incidents à examiner" value={ready ? incidents.filter(item => !['closed', 'contained', 'Confiné', 'Surveillance'].includes(item.status)).length : '—'} caption={ready ? 'Incidents reçus du système' : 'Pas encore mesuré'} />
         <Metric label="Actions bloquées" value={ready ? snapshot.blockedActions ?? '—' : '—'} caption="Résultats d’exécution uniquement" />
       </section>
 
@@ -155,12 +175,13 @@ export function SocConsole() {
           <div><span className="connection-name">Base de données</span><span className={`status ${connected ? 'connected' : error ? 'unavailable' : ''}`}>{connected ? 'Connectée' : error ? 'Indisponible' : 'Vérification…'}</span></div>
           <div><span className="connection-name">Agent RAG</span><span className={`status ${agents.length ? 'connected' : ''}`}>{agents.length ? 'Connecté' : 'Non disponible'}</span></div>
           <div><span className="connection-name">Pipeline de défense</span><span className={`status ${snapshot?.pipelineConnected ? 'connected' : ''}`}>{snapshot?.pipelineConnected ? 'Connectée' : 'Non disponible'}</span></div>
+          <div><span className="connection-name">Passerelle et packages</span><span className={`status ${snapshot?.gatewayConnected ? 'connected' : ''}`}>{snapshot?.gatewayConnected ? 'Connectée' : 'Non disponible'}</span></div>
           <div><span className="connection-name">Validation humaine</span><span className={`status ${snapshot?.pipelineConnected ? 'connected' : ''}`}>{snapshot?.pipelineConnected ? 'Disponible via l’API' : 'En attente du pipeline'}</span></div>
         </div>
       </section>
 
       <section className="panel workflow" aria-labelledby="workflow-title">
-        <div className="panel-heading"><h2 id="workflow-title">Parcours actuellement raccordé</h2><span>Les packages restent hors périmètre de cette version</span></div>
+        <div className="panel-heading"><h2 id="workflow-title">Parcours actuellement raccordé</h2><span>Packages : analyse puis décision humaine</span></div>
         <ol className="workflow-steps"><li><span>1</span><div><strong>Interroger la base</strong><small>Le RAG recherche dans les documents Supabase</small></div></li><li><span>2</span><div><strong>Répondre avec les sources</strong><small>La réponse et ses références sont affichées</small></div></li><li><span>3</span><div><strong>Journaliser et transmettre</strong><small>Les événements vont dans Supabase puis à Alex</small></div></li><li><span>4</span><div><strong>Enquêter si nécessaire</strong><small>La pipeline d’Alex conserve les incidents et décisions</small></div></li></ol>
       </section>
 
@@ -169,7 +190,14 @@ export function SocConsole() {
           {agents.length ? <ul className="record-list">{agents.map(agent => <li key={agent.id}><strong>{agent.name}</strong><p>{agent.role}</p></li>)}</ul> : <EmptyState title="Aucun agent branché" detail="Les vrais agents apparaîtront ici après leur intégration." />}
         </section>
         <section className="panel" aria-labelledby="reviews-title"><div className="panel-heading"><h2 id="reviews-title">Packages à valider</h2><span>Décisions humaines</span></div>
-          {pending.length ? <ul className="record-list">{pending.map(review => <li key={review.id}><strong>{review.package} · {review.version}</strong><p>En attente de décision</p></li>)}</ul> : <EmptyState title="Aucune demande reçue" detail="Les packages en attente seront listés ici. La validation n’est pas encore raccordée." />}
+          <form className="rag-form" onSubmit={e=>{e.preventDefault(); void packageAction('review',{name:packageName,ecosystem:registry});}}>
+            <label>Package à vérifier<input value={packageName} onChange={e=>setPackageName(e.target.value)} placeholder="Nom du package" required /></label>
+            <label>Registre<select value={registry} onChange={e=>setRegistry(e.target.value)}><option value="npm">npm</option><option value="pypi">PyPI</option></select></label>
+            <button disabled={packageBusy || !snapshot?.gatewayConnected}>Analyser</button>
+          </form>
+          {!analystAccess ? <form className="rag-form" onSubmit={e=>{e.preventDefault(); void packageAction('login',{email,password});}}><p>Pour décider, connectez-vous avec votre compte analyste autorisé.</p><label>E-mail<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></label><label>Mot de passe<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="current-password" /></label><button disabled={packageBusy}>Connexion analyste</button></form> : <button onClick={()=>setAnalystAccess('')}>Déconnecter le compte analyste</button>}
+          {packageMessage ? <p role="status">{packageMessage}</p> : null}
+          {pending.length ? <ul className="record-list">{pending.map(review => <li key={review.id}><strong>{review.package} · {review.version}</strong><p>Risque : {review.risk} · En attente de décision</p><div className="incident-actions"><button disabled={packageBusy || !analystAccess} onClick={()=>void packageAction('decision',{id:review.id,decision:'approve'})}>Approuver</button><button disabled={packageBusy || !analystAccess} onClick={()=>void packageAction('decision',{id:review.id,decision:'reject'})}>Refuser</button></div></li>)}</ul> : <EmptyState title="Aucune demande reçue" detail="Les packages en attente apparaîtront après analyse." />}
         </section>
         <section className="panel" aria-labelledby="incidents-title"><div className="panel-heading"><h2 id="incidents-title">Incidents</h2><span>Détections et enquêtes</span></div>
           {decisionError ? <div className="error-message" role="alert">{decisionError}</div> : null}
@@ -181,7 +209,7 @@ export function SocConsole() {
       </div>
 
       <section className="panel tests-summary" aria-labelledby="tests-title"><div><h2 id="tests-title">Résultats des tests</h2><p>Comparaison avec et sans protection, après les premières exécutions.</p></div><div><strong>{ready ? snapshot.completedTests ?? '—' : '—'}</strong><span>{ready ? 'Tests terminés' : 'Pas encore mesuré'}</span></div></section>
-      <footer>Interface de travail · Lecture seule · Aucun agent ni résultat simulé</footer>
+      <footer>Interface de travail · Données réelles · Décisions humaines tracées</footer>
     </main>
   </div>;
 }

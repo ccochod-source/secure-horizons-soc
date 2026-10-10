@@ -50,6 +50,8 @@ def main():
             raise SystemExit('Connexion PostgreSQL impossible : vérifier DATABASE_URL dans Supabase → Connect. Aucun service lancé.')
     config.setdefault('GATEWAY_TOKEN', settings.gateway_token)
     config.setdefault('DECOYS_SEED_ON_START', 'false')
+    if args.gateway:
+        config.setdefault('CONFINEMENT_URL', 'http://127.0.0.1:8002/confinement')
     children = []
     def stop(_signal=None, _frame=None):
         for _, child in children:

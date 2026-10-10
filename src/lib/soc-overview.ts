@@ -2,8 +2,9 @@ export type SocOverview = {
   updatedAt: string;
   databaseConnected: boolean;
   pipelineConnected: boolean;
+  gatewayConnected?: boolean;
   agents: { id: string; name: string; role: string }[];
-  reviews: { id: string; package: string; version: string; status: string }[];
+  reviews: { id: string; package: string; version: string; status: string; risk?: string }[];
   incidents: { id: string; title: string; severity: string; status: string; decision?: string }[];
   activity: { id: string; time: string; title: string; result: string }[];
   blockedActions: number | null;

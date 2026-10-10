@@ -115,3 +115,47 @@ async def _traced(operation):
         return await operation
     except TraceUnavailable:
         raise HTTPException(status_code=503, detail="Traçage indisponible : opération refusée.") from None
+
+
+class ConfinementIn(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=100)
+    action: str
+    cible: str = Field(min_length=1, max_length=100)
+    agent_id: str = Field(min_length=1, max_length=100)
+    approuve_par: str = Field(min_length=1, max_length=100)
+
+
+# Separate auth: the defense backend cannot borrow the gateway agent token.
+confinement_router = APIRouter()
+
+
+@confinement_router.post("/confinement")
+async def confine(body: ConfinementIn, request: Request):
+    expected = getattr(request.app.state, "confinement_token", "")
+    if not expected or not hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + expected):
+        raise HTTPException(401, "Jeton de confinement invalide.")
+    gateway = request.app.state.gateway
+    if body.action != "suspendre_outil":
+        raise HTTPException(422, "Seule la suspension d’outil est prise en charge.")
+    if body.cible not in {t["name"] for t in gateway.tools()} and body.cible != "install_package":
+        raise HTTPException(422, "Outil inconnu.")
+    request.app.state.defense.suspend(body.agent_id, body.cible, body.incident_id, body.approuve_par)
+    return {"etat": "execute", "tool": body.cible, "agent_id": body.agent_id}
+
+
+@router.post("/gateway/sessions/{trace_id}/complete")
+async def complete(trace_id: UUID, request: Request):
+    gateway = request.app.state.gateway
+    session = _session(gateway, trace_id)
+    async with session.lock:
+        session.closed = True
+        return await request.app.state.defense.complete(session)
+
+
+@router.get('/gateway/package-reviews')
+async def package_reviews(request: Request):
+    async with request.app.state.db.as_owner() as conn:
+        rows = await (await conn.execute(
+            "select id,package_name,registry,version,state,risk_level,recommendation from public.package_reviews "
+            "where state='pending_approval' order by created_at desc limit 30")).fetchall()
+    return {'reviews': rows}

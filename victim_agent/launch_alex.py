@@ -27,9 +27,9 @@ def main():
     os.environ.update(
         PASSERELLE_TOKEN=settings.alex_token, ANALYSTE_TOKEN=private["ANALYSTE_TOKEN"],
         CONFINEMENT_TOKEN=settings.confinement_token,
-        # The current RAG assistant is read-only and exposes no tool to suspend.
-        # Leave confinement unconfigured until a real guarded tool exists.
-        CONFINEMENT_URL="",
+        # The RAG remains read-only. dev:full supplies the actual tool gateway
+        # endpoint; a standalone launch leaves it unconfigured unless specified.
+        CONFINEMENT_URL=os.getenv("CONFINEMENT_URL", ""),
         OPENAI_API_KEY=settings.openai_key, OPENAI_MODEL=settings.model,
         SQLITE_PATH=str(data / f"alex-{args.port}-incidents.sqlite"),
         CHECKPOINT_PATH=str(data / f"alex-{args.port}-checkpoints.sqlite"),

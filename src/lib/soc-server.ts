@@ -115,12 +115,21 @@ export async function loadSocSnapshot(): Promise<SocOverview> {
     // Supabase remains available independently if Alex's API is not running.
   }
 
+  let reviews: SocOverview['reviews'] = [];
+  let gatewayConnected = false;
+  try {
+    const gatewayToken = await privateValue('GATEWAY_TOKEN') || victimToken;
+    const data = await getJson('http://127.0.0.1:8002/gateway/package-reviews', {Authorization: `Bearer ${gatewayToken}`}) as {reviews: Record<string, unknown>[]};
+    reviews = data.reviews.map(r => ({id: String(r.id), package: String(r.package_name), version: typeof r.version === 'string' ? r.version : '—', status: String(r.state), risk: String(r.risk_level || 'À qualifier')}));
+    gatewayConnected = true;
+  } catch { /* Display unavailability rather than an empty successful result. */ }
   return {
     updatedAt: checkedAt,
     databaseConnected: true,
     pipelineConnected,
     agents,
-    reviews: [],
+    reviews,
+    gatewayConnected,
     incidents,
     activity,
     blockedActions: null,

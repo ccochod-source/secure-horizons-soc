@@ -71,7 +71,9 @@ class Gateway:
         *,
         decoys: DecoyLayer | None = None,
         packages: PackageControl | None = None,
+        defense=None,
     ) -> None:
+        self._defense = defense
         self._events = events
         self._pseudonymizer = pseudonymizer
         self._decoys: DecoyLayer = decoys or NoDecoys()
@@ -250,6 +252,10 @@ class Gateway:
                 detector = ("system", "detecteur_piege")
                 return bool(await guarded(detector, lambda: self._decoys.trips(session, tool, payload, direction)))
 
+            if self._defense and self._defense.suspended(session.agent_id, tool):
+                await respond("blocked", {"reason": "suspended_by_analyst"}, ("system", "confinement"))
+                return {"status": "blocked", "reason": "suspended_by_analyst"}
+
             # Bloc 1 : couche de leurres. Une session déroutée ne touche plus rien de réel.
             if session.diverted or await trips(args, "call"):
                 return await divert()
@@ -291,6 +297,8 @@ class Gateway:
     # --- écriture -----------------------------------------------------------
 
     async def _record(self, session: Session, *, parent: UUID | None = None, **event: Any) -> UUID:
+        if session.closed:
+            raise TraceUnavailable("Conversation terminée : ouvrir une nouvelle session.")
         event_id = await self._write(
             trace_id=session.trace_id, run_id=session.run_id, parent=parent or session.last_event, **event
         )
