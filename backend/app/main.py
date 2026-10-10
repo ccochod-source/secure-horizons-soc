@@ -1,4 +1,4 @@
-"""Point d'entrée FastAPI : passerelle de traçage et coffre de pseudonymisation.
+"""Point d'entrée FastAPI : passerelle de traçage, coffre et contrôle des packages.
 
 Lancer depuis backend/ : uvicorn app.main:app --reload
 """
@@ -10,16 +10,21 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from common.config import REPO_ROOT, load_settings
 from common.db import ROLE_GATEWAY, Database
+from decoys import DecoyDefense, Detector, PostgresDecoyStore, Seeder, Tarpit
 from gateway.events import PostgresEventStore
 from gateway.proxy import Gateway
 from gateway.routes import router
 from gateway.upstream import McpUpstream
+from packages import AgentEnvInstaller, LocalQuarantine, PackageReviewer, PostgresReviewStore
+from packages.routes import AnalystAuth, SupabaseAuth
+from packages.routes import router as packages_router
 from vault.gitguardian import GitGuardianClient
 from vault.pseudonymize import Pseudonymizer
 from vault.scanner import Scanner
@@ -35,12 +40,33 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await db.open()
     gitguardian = GitGuardianClient(settings.gitguardian_api_key) if settings.gitguardian_api_key else None
     upstreams: list[McpUpstream] = []
+    http = httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"user-agent": "copilote-soc-packages"})
     try:
         async with db.as_role(ROLE_GATEWAY) as conn:
             cur = await conn.execute("select full_name from public.employees")
             names = [row["full_name"] for row in await cur.fetchall()]
         pseudonymizer = Pseudonymizer(PostgresTokenStore(db), Scanner(names), gitguardian)
-        gateway = Gateway(PostgresEventStore(db), pseudonymizer)
+        events = PostgresEventStore(db)
+        packages = PackageReviewer(
+            PostgresReviewStore(db), events, pseudonymizer, http,
+            LocalQuarantine(settings.package_quarantine_dir),
+            AgentEnvInstaller(settings.package_agent_env) if settings.package_agent_env else None,
+        )
+        decoy_store = PostgresDecoyStore(db)
+        if settings.decoys_seed_on_start:
+            try:
+                report = await Seeder(
+                    decoy_store, gitguardian_api_key=settings.gitguardian_api_key, client=http).seed()
+                logger.info("leurres : %d planté(s), %d déjà en place, %d ignoré(s)",
+                            len(report.planted), len(report.existing), len(report.skipped))
+            except Exception:
+                # Les leurres déjà plantés restent utilisables : on démarre avec eux.
+                logger.exception("semis des leurres en échec")
+        detector = Detector(decoy_store, events, pseudonymizer)
+        if await detector.load() == 0:
+            logger.error("aucun leurre reconnu : la couche de leurres ne déclenchera rien")
+        decoys = DecoyDefense(detector, Tarpit(settings.tarpit_payload_chars))
+        gateway = Gateway(events, pseudonymizer, decoys=decoys, packages=packages)
         for index, url in enumerate(settings.mcp_upstream_urls, start=1):
             upstream = McpUpstream(f"mcp_{index}", url)
             await upstream.start()
@@ -49,6 +75,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db = db
         app.state.gateway = gateway
         app.state.gateway_token = settings.gateway_token
+        app.state.packages = packages
+        app.state.decoys = decoys
+        app.state.analyst_auth = (
+            SupabaseAuth(http, settings.supabase_url, settings.supabase_api_key)
+            if settings.supabase_url and settings.supabase_api_key else None
+        )
         logger.info("passerelle prête : %d nom(s) dans l'annuaire, GitGuardian %s",
                     len(names), "actif" if gitguardian else "absent")
         yield
@@ -57,16 +89,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             await upstream.close()
         if gitguardian is not None:
             await gitguardian.aclose()
+        await http.aclose()
         await db.close()
 
 
-def create_app(*, gateway: Gateway | None = None, gateway_token: str | None = None) -> FastAPI:
+def create_app(
+    *, gateway: Gateway | None = None, gateway_token: str | None = None,
+    packages: PackageReviewer | None = None, analyst_auth: AnalystAuth | None = None,
+) -> FastAPI:
     """Sans argument : application réelle. Avec une passerelle : application de test."""
     load_dotenv(REPO_ROOT / ".env")
     app = FastAPI(title="Copilote SOC — passerelle", lifespan=None if gateway else _lifespan)
     if gateway is not None:
         app.state.gateway = gateway
         app.state.gateway_token = gateway_token
+        app.state.packages = packages
+        app.state.analyst_auth = analyst_auth
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3100")],
@@ -74,6 +112,7 @@ def create_app(*, gateway: Gateway | None = None, gateway_token: str | None = No
         allow_headers=["authorization", "content-type"],
     )
     app.include_router(router)
+    app.include_router(packages_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

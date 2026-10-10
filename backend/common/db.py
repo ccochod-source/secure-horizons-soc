@@ -45,3 +45,10 @@ class Database:
             async with conn.transaction():
                 await conn.execute(sql.SQL("set local role {}").format(sql.Identifier(role)))
                 yield conn
+
+    @asynccontextmanager
+    async def as_owner(self) -> AsyncIterator[AsyncConnection]:
+        """Transaction avec le compte de DATABASE_URL, pour les blocs sans rôle dédié en base."""
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                yield conn

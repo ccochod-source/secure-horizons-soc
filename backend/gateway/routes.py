@@ -76,7 +76,7 @@ async def record_document(trace_id: UUID, body: DocumentIn, gateway: Gateway = D
             session, source=body.source, resource_id=body.resource_id, content=body.content, title=body.title
         )
     )
-    return {"event_id": event_id}
+    return {"event_id": event_id, "diverted": session.diverted}
 
 
 @router.post("/gateway/sessions/{trace_id}/tools/{tool}")
@@ -96,7 +96,8 @@ async def call_tool(trace_id: UUID, tool: str, body: ToolCallIn, gateway: Gatewa
 @router.post("/gateway/sessions/{trace_id}/response", status_code=201)
 async def record_response(trace_id: UUID, body: ResponseIn, gateway: Gateway = Depends(_gateway)) -> dict[str, Any]:
     session = _session(gateway, trace_id)
-    return {"event_id": await _traced(gateway.record_response(session, body.text))}
+    event_id = await _traced(gateway.record_response(session, body.text))
+    return {"event_id": event_id, "diverted": session.diverted}
 
 
 @router.get("/gateway/tools")

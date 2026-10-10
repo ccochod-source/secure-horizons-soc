@@ -153,19 +153,37 @@ class Gateway:
         """Un document, e-mail ou fichier arrivé dans le contexte de l'agent (callback RAG)."""
         event_type, action = _DOCUMENT_EVENTS[source]
         async with session.lock:
-            return await self._record(
+            event_id = await self._record(
                 session, event_type=event_type, actor_type="agent", actor_id=session.agent_id,
                 action=action, result="success", resource_type=source, resource_id=resource_id,
                 content={"title": title, "text": content},
             )
+            await self._watch(session, source, {"resource_id": resource_id, "title": title, "text": content}, "result")
+            return event_id
 
     async def record_response(self, session: Session, text: str) -> UUID:
         """La réponse finale de l'agent à l'utilisateur."""
         async with session.lock:
-            return await self._record(
+            event_id = await self._record(
                 session, event_type="agent_response", actor_type="agent", actor_id=session.agent_id,
                 action="respond", result="success", content={"text": text},
             )
+            await self._watch(session, "agent_response", {"text": text}, "call")
+            return event_id
+
+    async def _watch(self, session: Session, channel: str, payload: Any, direction: Direction) -> None:
+        """Contenu passé hors appel d'outil : un leurre y déroute aussi la session.
+
+        Le contenu est déjà chez l'agent, rien n'est à bloquer ici ; une panne du
+        détecteur ne doit donc pas faire échouer l'enregistrement.
+        """
+        if session.diverted:
+            return
+        try:
+            if await _maybe_await(self._decoys.trips(session, channel, payload, direction)):
+                session.diverted = True
+        except Exception as exc:
+            logger.error("détecteur de leurres en échec sur %s (%s)", channel, type(exc).__name__)
 
     # --- appels d'outils ----------------------------------------------------
 
