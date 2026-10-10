@@ -9,6 +9,7 @@ out/
 __pycache__/
 .pytest_cache/
 .runtime/
+.quarantine/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

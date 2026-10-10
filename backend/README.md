@@ -1,95 +1,11 @@
-# Guide pas à pas : le backend du pipeline de défense
+# Backend intégré TRACE
 
-Pour Alex, sans prérequis en code. Une étape à la fois : fais-la, regarde le résultat, passe à la suivante.
+Deux applications complémentaires sont conservées :
 
-## Ce que contient le dossier `backend/`
+- **Défense** : `main:app`, port 8000 ; incidents et décisions humaines. [Guide](README-defense.md).
+- **Passerelle** : `app.main:app`, port 8002 ; traçage, coffre, leurres, contrôle des packages et environnement de démonstration. [Guide](README-gateway.md).
+- **RAG simple** : `victim_agent.app:app`, port 8001 ; assistant en lecture seule affiché dans le front.
 
-| Fichier | À quoi il sert |
-|---|---|
-| `formats.py` | Les formats échangés avec l'équipe. Ils recopient ceux de l'interface (`frontend/src/lib/demo-data.ts`) : événement (`TraceEvent`), incident (`Incident`), décision de l'analyste. C'est la base de la réunion avec Léon. |
-| `pipeline.py` | Le pipeline LangGraph : règle → enquêteur (OpenAI) → vérificateur → dossier → pause jusqu'au clic de l'analyste → application de la décision. |
-| `main.py` | Le serveur (FastAPI) que l'interface et l'agent d'Elyott appellent, sur le port 8000. |
-| `stockage.py` | Range les incidents dans un fichier SQLite. Réserve un numéro unique dès la réception et n'accepte qu'une seule décision par incident. |
-| `masquage.py` | Remplace chaque secret (clés, jetons, mots de passe dans une URL...) par un jeton stable `SECRET_001`, dans tous les champs, avant l'IA et avant la base. |
-| `execution.py` | Envoie l'action approuvée à la passerelle (`CONFINEMENT_URL`). Sans confirmation de la passerelle, l'incident n'est jamais « Confiné ». |
-| `tests/` | Les tests automatiques (`python -m pytest -q`), sans clé OpenAI. |
-| `exemple_attaque.json`, `exemple_normal.json` | Deux jeux d'événements pour tester : une attaque et une conversation normale. |
-| `.env.example` | Modèle du fichier de configuration (clé OpenAI, modèle, passerelle, jetons d'accès). |
-| `requirements.txt` | La liste des bibliothèques Python à installer, avec leurs versions exactes (rien ne change sans qu'on le décide). |
-
-## Étape 1 : mettre le code dans le dépôt
-
-Le dossier `backend/` doit arriver dans le dépôt `secure-horizons-soc`, à côté de `frontend/`.
-
-## Étape 2 : ranger la clé OpenAI dans GitHub (jamais dans le code)
-
-Sur la page du dépôt : **Settings → Secrets and variables → Codespaces → New repository secret**.
-Nom : `OPENAI_API_KEY`. Valeur : la clé OpenAI de l'équipe.
-
-## Étape 3 : ouvrir un Codespace
-
-Sur la page du dépôt : bouton vert **Code → onglet Codespaces → Create codespace on main**.
-Un éditeur s'ouvre dans le navigateur, avec un terminal en bas.
-
-## Étape 4 : installer
-
-Dans le terminal, taper une ligne à la fois puis Entrée :
-
-```
-cd backend
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-## Étape 5 : premier test sans IA
-
-```
-MOCK_LLM=1 python pipeline.py
-```
-
-Résultat attendu : un incident `INC-0001`, deux conclusions marquées `[OK]` avec la raison donnée par le vérificateur, deux preuves (`evt-002`, `evt-004`), une confiance de 1.0, l'action « Suspendre le connecteur github.publish », puis « Statut final : Approuvé, en attente d'exécution » : aucune passerelle n'est branchée, donc rien n'a réellement été bloqué et le backend ne prétend pas le contraire.
-
-Les tests automatiques vérifient les points de la relecture (masquage, numéros uniques, boucles, vérification des preuves, exécution réelle, jetons d'accès) :
-
-```
-python -m pytest -q
-```
-
-## Étape 6 : test avec la vraie IA
-
-```
-python pipeline.py
-```
-
-Même chose, mais l'explication est écrite par OpenAI. Si une erreur parle du modèle, changer `OPENAI_MODEL` dans `.env` (par exemple `gpt-4.1-mini`).
-
-## Étape 7 : lancer le serveur
-
-```
-uvicorn main:app --reload --port 8000
-```
-
-Codespaces propose d'ouvrir le port 8000 : ouvrir le lien et ajouter `/docs` à l'adresse. Cette page permet d'essayer chaque route :
-1. `POST /events` : coller le contenu de `exemple_attaque.json` → un incident revient, statut « À examiner ».
-2. `GET /incidents` : la liste des incidents.
-3. `POST /incidents/INC-000X/decision` avec `{"decision": "approved", "reason": "clé exposée", "analyst": "alex"}` → statut « Approuvé, en attente d'exécution ».
-4. `POST /incidents/INC-000X/execution` avec `{"etat": "execute", "detail": "outil retiré"}` (c'est la passerelle qui l'enverra) → statut « Confiné ».
-
-## Étape 8 : brancher l'interface
-
-L'interface lit `NEXT_PUBLIC_API_BASE_URL` (déjà prévu à `http://localhost:8000`). La personne qui fait l'interface remplace les données de démonstration par `GET /incidents` et le bouton Approuver par `POST /incidents/{id}/decision`. Deux ajouts côté interface :
-- le statut `IncidentStatus` gagne la valeur « Approuvé, en attente d'exécution » ;
-- si `ANALYSTE_TOKEN` est défini, chaque appel envoie l'en-tête `Authorization: Bearer <jeton>`.
-
-## Étape 9 : brancher la passerelle d'Elyott
-
-- Elyott envoie ses événements sur `POST /events` (en-tête `Authorization: Bearer <PASSERELLE_TOKEN>` si défini).
-- Pour l'exécution, deux possibilités : soit on met dans `.env` `CONFINEMENT_URL` (l'adresse où sa passerelle reçoit `{incident_id, action, cible, agent_id, approuve_par}`), et le backend passe à « Confiné » si elle répond 2xx ; soit sa passerelle confirme elle-même via `POST /incidents/{id}/execution`.
-
-## Ce qui reste simple pour l'instant (à améliorer ensuite)
-
-- Une seule règle : lecture d'une ressource sensible suivie d'une sortie vers l'extérieur.
-- L'action réelle dépend de la passerelle d'Elyott : tant qu'elle n'est pas branchée, les incidents approuvés restent « en attente d'exécution ».
-- Les jetons d'accès sont partagés (un pour la passerelle, un pour les analystes). En entreprise : connexion par l'annuaire (SSO), et le nom de l'analyste viendra de cette connexion au lieu du champ `analyst`.
-- Stockage SQLite en attendant la base PostgreSQL de Léon (seul `stockage.py` changera).
-- Le vérificateur contrôle le type de chaque conclusion et ses preuves, pas chaque mot de la phrase écrite par l'IA.
+Depuis la racine : `python -m pip install -r backend/requirements.txt` dans le venv.
+La passerelle exige une connexion PostgreSQL dans `DATABASE_URL`, ainsi que les tables et rôles de la migration Supabase. Le RAG et l’interface utilisent l’API HTTPS `SUPABASE_URL`.
+Ne pas confondre ces deux adresses. Les secrets restent dans les fichiers `.env` ignorés.
