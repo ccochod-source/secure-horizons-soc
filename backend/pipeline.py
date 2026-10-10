@@ -150,7 +150,8 @@ def enqueteur(etat: Etat) -> dict:
             f"Événements observés par la passerelle :\n{lignes}\n\n"
             "Explique ce qui s'est passé en français, simplement. Chaque conclusion doit citer les identifiants "
             "des événements qui la prouvent, uniquement parmi ceux de la liste. N'invente rien. "
-            "Propose une seule action de confinement, la plus ciblée possible, et décris son impact pour les employés."
+            "Propose une seule action de confinement, la plus ciblée possible, et décris son impact pour les employés. "
+            "Pour le champ cible, donne uniquement l'identifiant exact de l'outil, de la ressource ou de l'agent (par exemple github.publish)."
         )
         modele = init_chat_model(f"openai:{MODELE}", rate_limiter=LIMITEUR)
         resultat = modele.with_structured_output(SortieEnqueteur).invoke(consigne)
