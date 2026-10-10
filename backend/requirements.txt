@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+psycopg[binary,pool]    # connexion Postgres directe (SET LOCAL ROLE, requetes recursives)
+mcp>=2,<3               # SDK MCP Python (API v2 : Client, MCPServer)
+httpx                   # appels GitGuardian
+pydantic
+python-dotenv
+pytest                  # tests

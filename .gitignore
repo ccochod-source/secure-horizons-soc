@@ -5,3 +5,8 @@ out/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# Backend Python
+.venv/
+__pycache__/
+.pytest_cache/
