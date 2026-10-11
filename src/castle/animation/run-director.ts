@@ -177,13 +177,13 @@ function decoyLabel(e: RunEvent | undefined): string {
 
 export function narrate(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, running: boolean, incident: DefenseIncident | null = null, cvr: ContreVerification | null = null, knowledge: KnowledgeAdmission | null = null): Narration[] {
   const out: Narration[] = [];
-  if (kind === 'packages' && knowledge) {
+  if ((kind === 'packages' || kind === 'document') && knowledge) {
     out.push({ id: 'k-dep', state: 'done', title: `Nouveau document déposé : « ${knowledge.title} »`, meaning: 'Il contient une consigne cachée pour l’assistant : installer « pdfreport-turbo ». Tant qu’il n’est pas validé, aucun agent ne peut le lire.', castle: 'Un pigeon apporte le document.' });
     if (knowledge.status === 'pending') out.push({ id: 'k-wait', state: 'active', title: 'Admission des connaissances : analyse en cours…', meaning: 'Règles de détection, puis une IA qui traite le document comme une donnée (jamais comme une instruction).' });
     else if (knowledge.status === 'quarantined') out.push({ id: 'k-q', state: 'error', title: 'Document mis en quarantaine par l’admission', meaning: knowledge.reason ?? '', castle: 'Alerte et trône allumés : un analyste doit trancher (voir en haut).' });
     else if (knowledge.status === 'rejected') out.push({ id: 'k-r', state: 'done', title: knowledge.decidedByAnalyst ? 'Refusé par l’analyste : attaque stoppée en amont' : 'Document refusé', meaning: 'Le guide piégé ne sera jamais lu par DevBot : l’attaque s’arrête avant même d’atteindre l’agent.', castle: 'Victoire sans combat.' });
     else if (knowledge.status === 'approved') out.push({ id: 'k-a', state: knowledge.decidedByAnalyst ? 'error' : 'done', title: knowledge.decidedByAnalyst ? 'L’analyste a laissé passer le document : l’attaque continue' : 'Document approuvé par l’admission', meaning: 'DevBot peut désormais le lire. Les défenses suivantes prennent le relais : contrôle des packages, puis agents défenseurs.' });
-    if (knowledge.status !== 'approved') return out;
+    if (kind === 'document' || knowledge.status !== 'approved') return out;
   }
   const t = trace ?? { traceId: null, events: [], review: null };
   const req = first(t, 'user_request');
@@ -312,7 +312,7 @@ export function narrate(kind: TestKind, trace: RunTrace | null, outcome: RunOutc
 export function traceRun(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, incident: DefenseIncident | null = null, knowledge: KnowledgeAdmission | null = null): TraceStep[] {
   const t = trace ?? { traceId: null, events: [], review: null };
   const steps: TraceStep[] = [];
-  if (kind === 'packages' && knowledge) {
+  if ((kind === 'packages' || kind === 'document') && knowledge) {
     const st = knowledge.status === 'pending' ? 'active' : knowledge.status === 'quarantined' ? 'active' : knowledge.status === 'rejected' ? 'done' : knowledge.decidedByAnalyst ? 'error' : 'done';
     steps.push({ id: 'k', block: 'inventory', state: st, label: `Admission des connaissances : ${knowledge.status === 'pending' ? 'analyse…' : knowledge.status === 'quarantined' ? 'quarantaine, décision humaine requise' : knowledge.status === 'rejected' ? 'document refusé, attaque stoppée' : 'document approuvé'}`, detail: knowledge.reason ?? undefined });
   }

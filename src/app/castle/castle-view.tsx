@@ -23,6 +23,7 @@ function writeCount(n: number) {
   try { localStorage.setItem(COUNT_KEY, String(n)); } catch { /* stockage indisponible : l'alternance repart de zéro */ }
 }
 
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const card: React.CSSProperties = { background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: '14px 16px' };
 const STATE_ICON = { done: '✓', active: '…', error: '!', skip: '–' } as const;
 const STATE_COLOR = { done: 'var(--success)', active: 'var(--warning)', error: 'var(--danger)', skip: 'var(--warning)' } as const;
@@ -41,6 +42,7 @@ export function CastleView() {
   const [trace, setTrace] = useState<RunTrace | null>(null);
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
   const [running, setRunning] = useState(false);
+  const [sequencing, setSequencing] = useState(false);
   const director = useRef<RunDirector | null>(null);
   // décision analyste (packages)
   const [token, setToken] = useState('');
@@ -94,9 +96,9 @@ export function CastleView() {
   const pending = trace?.review?.state === 'pending_approval';
   const finished = knowledge?.status === 'rejected' || knowledge?.status === 'missing' || (!!outcome && (!outcome.ok || !outcome.defenseIncidentId || incidentFinal) && (trace?.review?.humanDecision !== 'approve' || cvrFinal));
 
-  // Suivi en direct des événements du test dans Supabase.
+  // Suivi en direct des événements du test dans Supabase (sauf import direct : pas d'agent, pas de trace).
   useEffect(() => {
-    if (!run) return;
+    if (!run || run.kind === 'document') return;
     let stop = false;
     const poll = async () => {
       try {
@@ -228,6 +230,55 @@ export function CastleView() {
       return;
     }
     await startAgent(kind);
+  }
+
+  /** Les 3 attaques, l'une après l'autre dans le château : leurres, puis contrôle des packages, puis import direct. */
+  async function launchSequence() {
+    if (!animator || running || sequencing) return;
+    setSequencing(true);
+    try {
+      await runOne('leurres');
+      await runOne('paquets');
+      await runOne('document');
+    } finally {
+      setSequencing(false);
+    }
+  }
+
+  /** Joue une attaque et attend que son animation se termine, pour enchaîner la suivante. */
+  async function runOne(kind: TestKind) {
+    if (!animator) return;
+    const since = new Date(Date.now() - 5000).toISOString();
+    animator.reset();
+    director.current = new RunDirector(animator, kind);
+    setTrace(null); setOutcome(null); setIncident(null); setIncidentMsg(''); setCvr(null); setCvrMsg(''); setDecisionMsg(''); setKnowledge(null); setKnowledgeMsg('');
+    agentStarted.current = false;
+    const n = count + 1; setCount(n); writeCount(n);
+    setRun({ since, kind, n });
+
+    if (kind === 'document') {
+      // Import direct dans la base : dépôt d'un document piégé ; l'admission le met en quarantaine (pas d'agent).
+      try {
+        const r = await fetch('/api/castle/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'deposit' }) });
+        const d = (await r.json()) as { id?: string; title?: string; status?: KnowledgeAdmission['status']; error?: string };
+        if (!r.ok || !d.id) { setKnowledgeMsg(d.error ?? `Erreur ${r.status}`); await delay(2500); return; }
+        let k: KnowledgeAdmission = { id: d.id, title: d.title ?? '', status: d.status ?? 'pending', reason: null };
+        setKnowledge(k); director.current?.updateKnowledge(k);
+        for (let i = 0; i < 20 && k.status === 'pending'; i++) {
+          await delay(1500);
+          const rr = await fetch(`/api/castle/knowledge?id=${d.id}`, { cache: 'no-store' });
+          if (!rr.ok) continue;
+          const dd = (await rr.json()) as { status: KnowledgeAdmission['status']; reason: string | null };
+          k = { ...k, status: dd.status, reason: dd.reason ?? k.reason };
+          setKnowledge(k); director.current?.updateKnowledge(k);
+        }
+        await delay(4000);
+      } catch { setKnowledgeMsg('Dépôt indisponible.'); await delay(2000); }
+      return;
+    }
+    // leurres / paquets : vraie conversation avec DevBot ; l'animation suit les événements tracés.
+    await startAgent(kind);
+    await delay(8000);
   }
 
   /** 2. la conversation réelle avec DevBot (directement pour les leurres, après admission pour les packages). */
@@ -524,9 +575,13 @@ export function CastleView() {
           <strong style={{ fontSize: 15, display: 'block', marginTop: 2 }}>Chemin : {TESTS[nextKind].title}</strong>
           <p style={{ marginTop: 4, color: 'var(--text)' }}>{TESTS[nextKind].explain}</p>
           <p style={{ marginTop: 4, color: 'var(--text-2)', fontStyle: 'italic' }}>Demande envoyée : « {TESTS[nextKind].prompt} »</p>
-          <button onClick={() => void launch()} disabled={!ready} className="btn-primary btn-block" style={{ marginTop: 8 }}>
+          <button onClick={() => void launch()} disabled={!ready || sequencing} className="btn-primary btn-block" style={{ marginTop: 8 }}>
             {running ? 'Test en cours sur la vraie passerelle…' : run && !finished ? 'Terminez le test en cours' : '▶ Lancer le test réel'}
           </button>
+          <button onClick={() => void launchSequence()} disabled={!ready || sequencing || running} className="btn-block" style={{ marginTop: 8, background: 'var(--surface)', border: '1px solid var(--line)', color: 'var(--text)', borderRadius: 'var(--r-md)', padding: '8px 12px', cursor: 'pointer' }}>
+            {sequencing ? 'Démonstration des 3 attaques en cours…' : '⚔ Lancer les 3 attaques à la suite'}
+          </button>
+          <p style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 6 }}>Les 3 attaques : 1) leurres · 2) contrôle des packages · 3) import direct dans la base.</p>
           {!health?.gateway && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>Passerelle arrêtée : lancer <code>scripts/castle/run_gateway.sh</code> (réseau autorisant PostgreSQL).</p>}
           <p style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 6 }}>Le suivant passera par : {TESTS[ORDER[(count + 1) % 2]].title}.</p>
         </section>
