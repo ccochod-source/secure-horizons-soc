@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { SocOverview } from '@/lib/soc-overview';
 
@@ -225,9 +226,12 @@ export function SocConsole() {
   const knowledgeReviews = connected ? snapshot!.knowledgeReviews : [];
   const updated = snapshot ? new Date(snapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
 
-  return <div className="app">
+  return <div className="ds ds-console">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark" aria-hidden="true">T</span><strong>TRACE</strong><span className="version">Version de travail</span></div>
+      <div className="brand">
+        <Link href="/" className="btn btn-sm" aria-label="Retour au tableau de bord">&larr; Tableau de bord</Link>
+        <span className="brand-mark" aria-hidden="true">T</span><strong>TRACE</strong><span className="version">Console SOC</span>
+      </div>
       <span className="team-label">Secure Horizons · Équipe SOC</span>
     </header>
 

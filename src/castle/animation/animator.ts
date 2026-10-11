@@ -32,6 +32,9 @@ export class CastleAnimator {
   constructor(readonly root: THREE.Object3D) {
     this.props.name = 'animated_props';
     root.add(this.props);
+    // Au repos, la herse est relevée (porte ouverte) : on la place en position haute si besoin.
+    const portcullis = this.find('portcullis');
+    if (portcullis && this.gateOpen && portcullis.position.y < 2) portcullis.position.y = DIM.gate.arch.height - 0.7;
     for (let i = 0; i < 4; i++) this.find(`alarm_smoke_${i}`)?.scale.setScalar(0.001);
     this.tweens.loop('flag', (t) => {
       const flag = this.find('flag');
@@ -287,18 +290,48 @@ export class CastleAnimator {
   }
 
   /** Halo sur le trône : une décision humaine est attendue. */
+  private throneHome: THREE.Vector3 | null = null;
+  private throneHomeScale = 1;
+
+  /** Décision humaine attendue : le trône s'élève au-dessus du château, bien visible, et scintille. */
   async throneAttention(on = true) {
-    const throne = this.find('throne');
-    const seat = this.firstMesh(throne, (m) => (m.material as THREE.Material).name === 'gold');
-    if (!seat) return;
-    const m = this.ownMaterial(seat);
-    if (!on) {
+    const t = this.find('throne');
+    if (!t) return;
+    if (!this.throneHome) { this.throneHome = t.position.clone(); this.throneHomeScale = t.scale.x || 1; }
+    const home = this.throneHome;
+    this.tweens.cancel('throne_move');
+    if (on) {
+      if (!this.find('throne_beam')) {
+        const beam = new THREE.PointLight('#ffd36b', 0, 160, 1.1);
+        beam.name = 'throne_beam';
+        beam.position.set(0, 44, 20);
+        this.props.add(beam);
+        void this.tweens.run(0.8, (k) => void (beam.intensity = 180 * k));
+      }
+      const from = t.position.clone();
+      const fromScale = t.scale.x;
+      await this.tweens.run(1.8, (k) => {
+        t.position.set(from.x + (0 - from.x) * k, from.y + (30 - from.y) * k, from.z + (20 - from.z) * k);
+        t.scale.setScalar(fromScale + (this.throneHomeScale * 1.7 - fromScale) * k);
+      }, { ease: easeOut, tag: 'throne_move' });
+      this.tweens.loop('throne', (time) => {
+        t.rotation.y = time * 0.5;
+        t.position.y = 30 + Math.sin(time * 1.2) * 1.5;
+      });
+    } else {
       this.tweens.stopLoop('throne');
-      m.emissiveIntensity = 0;
-      return;
+      const from = t.position.clone();
+      const fromScale = t.scale.x;
+      const beam = this.find('throne_beam') as THREE.PointLight | null;
+      await this.tweens.run(1.2, (k) => {
+        t.position.lerpVectors(from, home, k);
+        t.scale.setScalar(fromScale + (this.throneHomeScale - fromScale) * k);
+
+        if (beam) beam.intensity = 180 * (1 - k);
+      }, { ease: easeIn, tag: 'throne_move' });
+      t.rotation.y = 0;
+      if (beam) this.props.remove(beam);
     }
-    m.emissive.set('#ffd36b');
-    this.tweens.loop('throne', (t) => void (m.emissiveIntensity = 0.9 + 0.7 * Math.sin(t * 4)));
   }
 
   // --- bataille : guerriers, chevaliers, archers -----------------------------------

@@ -167,3 +167,49 @@
 .ds-panel details summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 1100px) { .ds-panel.right { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ds *, .ds *::before, .ds *::after { transition: none !important; animation: none !important; } }
+
+/* --- Console SOC : la charte « Soft Bento » appliquée au composant de l'équipe, sans réécrire son balisage --- */
+.ds-console { background: var(--bg); color: var(--text); min-height: 100vh; font-family: var(--font-body); }
+.ds-console .topbar { padding: 16px max(32px, calc((100vw - 1200px) / 2)); border-bottom: 0; align-items: center; }
+.ds-console .brand { gap: 12px; }
+.ds-console .brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--grad-brand); font-weight: 700; }
+.ds-console .brand > strong { font: 700 20px/1 var(--font-display); letter-spacing: 0; }
+.ds-console .version { border-left: 1px solid var(--border); padding-left: 12px; color: var(--text-3); }
+.ds-console .team-label { color: var(--text-3); }
+.ds-console main { max-width: 1200px; padding: 8px 32px 48px; }
+.ds-console h1 { font: 500 36px/40px var(--font-display); letter-spacing: -.5px; }
+.ds-console h2 { font: 600 18px/24px var(--font-display); }
+.ds-console h3 { font: 600 15px/20px var(--font-body); }
+.ds-console .page-heading p { color: var(--text-2); }
+.ds-console .page-tabs { border-bottom: 0; gap: 6px; }
+.ds-console .page-tabs button { border: 0; border-radius: var(--r-pill); height: 36px; padding: 0 16px; background: var(--surface); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--border); }
+.ds-console .page-tabs button[aria-selected="true"] { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+.ds-console .page-tabs button:hover:not(:disabled) { background: var(--surface-2); }
+.ds-console .page-tabs button[aria-selected="true"]:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); }
+.ds-console .metrics { gap: 16px; }
+.ds-console .metric { border: 0; border-radius: var(--r-lg); padding: 20px 24px; background: var(--surface); box-shadow: var(--shadow-card); }
+.ds-console .metric p { color: var(--text-2); }
+.ds-console .metric strong { font: 500 40px/44px var(--font-body); font-variant-numeric: tabular-nums; }
+.ds-console .metric span { color: var(--text-3); }
+.ds-console .notice { background: var(--info-bg); border: 0; border-radius: var(--r-md); }
+.ds-console .notice strong { color: var(--info); } .ds-console .notice p { color: var(--info); opacity: .85; }
+.ds-console .error-message { background: var(--danger-bg); border: 0; border-radius: var(--r-md); color: var(--danger); }
+.ds-console .panel { border: 0; border-radius: var(--r-lg); padding: 24px; background: var(--surface); box-shadow: var(--shadow-card); }
+.ds-console button { border: 0; border-radius: var(--r-pill); height: 40px; padding: 0 18px; background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); font-weight: 500; }
+.ds-console button:hover:not(:disabled) { filter: brightness(.96); background: var(--surface); border-color: transparent; }
+.ds-console .primary-button, .ds-console .page-tabs button[aria-selected="true"] { box-shadow: none; }
+.ds-console .primary-button { background: var(--ink); color: var(--on-ink); }
+.ds-console .primary-button:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); filter: brightness(1.1); }
+.ds-console .rag-form textarea, .ds-console .rag-form input, .ds-console .rag-form select { border: 0; border-radius: var(--r-md); background: var(--surface-2); color: var(--text); }
+.ds-console .rag-form textarea:focus-visible, .ds-console .rag-form input:focus, .ds-console .rag-form select:focus { outline: none; background: var(--surface); box-shadow: 0 0 0 3px rgba(124,108,240,.4); }
+.ds-console .rag-sources li, .ds-console .demo-facts > div, .ds-console .connection-list > div { border: 0; }
+.ds-console .rag-sources li, .ds-console .demo-facts > div { background: var(--surface-2); border-radius: var(--r-md); }
+.ds-console .rag-sources li > span, .ds-console .version + *, .ds-console .brand-mark { color: #fff; }
+.ds-console .rag-sources li > span { color: var(--brand-600); }
+.ds-console .status.connected { color: var(--success); } .ds-console .status.connected::before { background: var(--success); }
+.ds-console .status.unavailable { color: var(--danger); } .ds-console .status.unavailable::before { background: var(--danger); }
+.ds-console .workflow-steps li > span { background: var(--brand-100); color: var(--brand-600); }
+.ds-console .record-list li { border-top: 1px solid var(--border); }
+.ds-console .empty-state { background: var(--surface-2); border-radius: var(--r-md); }
+.ds-console .incident-actions button { height: 34px; }
+.ds-console .tests-summary strong { font: 500 28px/1 var(--font-body); }

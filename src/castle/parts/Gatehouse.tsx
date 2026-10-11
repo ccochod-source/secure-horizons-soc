@@ -52,7 +52,26 @@ export function Gatehouse() {
         <coneGeometry args={[0.35, 1, 6]} />
       </mesh>
 
-      <mesh name="portcullis" geometry={grille} position={[0, 0.3, G.portcullisZ]} material={M.iron} castShadow />
+      {/* porte de bois à deux vantaux, en retrait dans le passage voûté (fixe) */}
+      <group name="gate_doors" position={[0, 0.1, -s / 2 + 0.4]}>
+        {[-1, 1].map((sx) => (
+          <mesh key={sx} material={M.wood(G.arch.width / 2, G.arch.height)} castShadow position={[sx * (G.arch.width / 2 - 0.9) / 2, (G.arch.height - 1) / 2, 0]}>
+            <boxGeometry args={[G.arch.width / 2 - 0.3, G.arch.height - 1, 0.4]} />
+          </mesh>
+        ))}
+        {[2, 5, 8].map((y) => (
+          <mesh key={`b${y}`} material={M.iron} position={[0, y, 0.22]}>
+            <boxGeometry args={[G.arch.width - 0.6, 0.35, 0.12]} />
+          </mesh>
+        ))}
+        {[-1, 1].map((sx) => (
+          <mesh key={`k${sx}`} material={M.iron} position={[sx * 0.6, 4.5, 0.26]}>
+            <sphereGeometry args={[0.28, 8, 6]} />
+          </mesh>
+        ))}
+      </group>
+      {/* herse relevée au repos (position haute) ; l'animateur l'abaisse pour fermer */}
+      <mesh name="portcullis" geometry={grille} position={[0, G.arch.height - 0.7, G.portcullisZ]} material={M.iron} castShadow />
 
       <group name="drawbridge" position={[0, D.hingeY, s / 2]}>
         <mesh position={[0, 0, D.length / 2]} material={M.wood(D.width, D.length)} castShadow receiveShadow>

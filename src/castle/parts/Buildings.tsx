@@ -106,7 +106,6 @@ export function GreatHall() {
   const southZ = wz + wd / 2;
   const postH = H.west.eaves - 0.5;
   const posts = Array.from({ length: L.posts }, (_, i) => wx - ww / 2 + 0.8 + (i * (ww - 1.6)) / (L.posts - 1));
-  const Th = DIM.throne;
   return (
     <group name="great_hall">
       <Building name="great_hall_east" {...H.east} doorDir={[-1, 0]} door={[2.6, 4.2]} />
@@ -135,17 +134,7 @@ export function GreatHall() {
           <boxGeometry args={[ww + 0.4, 0.35, L.depth + 0.6]} />
         </mesh>
       </group>
-      <group name="throne" position={[wx, 0, southZ + 1.3]}>
-        <mesh position={[0, Th.daisHeight / 2, 0]} material={M.carpet} receiveShadow>
-          <boxGeometry args={[Th.daisSize[0], Th.daisHeight, Th.daisSize[1]]} />
-        </mesh>
-        <mesh position={[0, Th.daisHeight + 0.25, 0.2]} material={M.gold} castShadow>
-          <boxGeometry args={[1.4, 0.5, 1.2]} />
-        </mesh>
-        <mesh position={[0, Th.daisHeight + 1.1, -0.45]} material={M.gold} castShadow>
-          <boxGeometry args={[1.4, 2.2, 0.3]} />
-        </mesh>
-      </group>
+      <Throne position={[wx, 0, southZ + 1.3]} />
     </group>
   );
 }
@@ -229,6 +218,62 @@ export function QuarantinePen() {
       <mesh name="quarantine_crate_1" position={[1.6, 0.7, -1.4]} rotation-y={-0.5} material={M.wood(1.4, 1.4)} castShadow>
         <boxGeometry args={[1.4, 1.4, 1.4]} />
       </mesh>
+    </group>
+  );
+}
+
+/**
+ * Trône baroque doré à velours rouge (inspiration : fauteuil d'apparat sculpté).
+ * Construit à partir de primitives ; anchré à l'origine du groupe pour que l'animateur
+ * puisse le faire s'élever au-dessus du château quand une décision humaine est attendue.
+ */
+export function Throne({ position }: { position: readonly [number, number, number] }) {
+  const M = useMemo(getMaterials, []);
+  const gold = M.gold;
+  const velvet = M.carpet;
+  const seatY = 2.2, seatW = 2.8, seatD = 2.4, backTop = 7.2;
+  // montants et volutes dorés du dossier
+  const scroll = (sx: number, y: number) => (
+    <group key={`sc${sx}${y}`} position={[sx * (seatW / 2 + 0.1), y, -seatD / 2 - 0.1]}>
+      <mesh material={gold} castShadow rotation-z={sx < 0 ? 0 : Math.PI}><torusGeometry args={[0.55, 0.16, 8, 12, Math.PI * 1.5]} /></mesh>
+    </group>
+  );
+  return (
+    <group name="throne" position={[position[0], position[1], position[2]]} scale={[1.45, 1.45, 1.45]}>
+      {/* pieds tournés */}
+      {[-1, 1].map((sx) => [-1, 1].map((sz) => (
+        <group key={`leg${sx}${sz}`} position={[sx * (seatW / 2 - 0.35), 0, sz * (seatD / 2 - 0.35)]}>
+          <mesh material={gold} castShadow position={[0, seatY / 2, 0]}><cylinderGeometry args={[0.22, 0.3, seatY, 8]} /></mesh>
+          <mesh material={gold} position={[0, seatY * 0.55, 0]}><sphereGeometry args={[0.32, 10, 8]} /></mesh>
+          <mesh material={gold} position={[0, 0.12, 0]}><sphereGeometry args={[0.26, 8, 6]} /></mesh>
+        </group>
+      )))}
+      {/* traverse basse sculptée (coquille) */}
+      <mesh material={gold} castShadow position={[0, 1.1, seatD / 2 + 0.05]} rotation-x={Math.PI / 2}><cylinderGeometry args={[0.45, 0.45, 0.35, 10, 1, false, 0, Math.PI]} /></mesh>
+      {/* assise : cadre doré + coussin velours */}
+      <mesh material={gold} castShadow position={[0, seatY, 0]}><boxGeometry args={[seatW + 0.3, 0.5, seatD + 0.3]} /></mesh>
+      <mesh material={velvet} position={[0, seatY + 0.38, 0.1]}><boxGeometry args={[seatW - 0.1, 0.42, seatD - 0.2]} /></mesh>
+      {/* accotoirs à volute */}
+      {[-1, 1].map((sx) => (
+        <group key={`arm${sx}`} position={[sx * (seatW / 2 + 0.05), seatY + 0.3, 0.1]}>
+          <mesh material={gold} castShadow position={[0, 0.7, 0]}><boxGeometry args={[0.3, 1.4, seatD - 0.4]} /></mesh>
+          <mesh material={gold} castShadow position={[0, 1.45, seatD / 2 - 0.3]} rotation-z={sx < 0 ? -0.2 : 0.2}><torusGeometry args={[0.4, 0.14, 8, 12, Math.PI]} /></mesh>
+        </group>
+      ))}
+      {/* dossier : deux montants, panneau velours, fronton en plein cintre doré */}
+      {[-1, 1].map((sx) => (
+        <mesh key={`post${sx}`} material={gold} castShadow position={[sx * (seatW / 2 + 0.05), seatY + (backTop - seatY) / 2 + 0.3, -seatD / 2 - 0.05]}><boxGeometry args={[0.45, backTop - seatY, 0.45]} /></mesh>
+      ))}
+      <mesh material={velvet} position={[0, seatY + (backTop - seatY) / 2 + 0.5, -seatD / 2 + 0.05]}><boxGeometry args={[seatW - 0.3, backTop - seatY - 0.6, 0.25]} /></mesh>
+      <mesh material={gold} castShadow position={[0, backTop + 0.3, -seatD / 2 - 0.05]} rotation-x={-Math.PI / 2}><cylinderGeometry args={[(seatW + 0.6) / 2, (seatW + 0.6) / 2, 0.5, 20, 1, false, 0, Math.PI]} /></mesh>
+      {[1.2, 2.4, 3.6, 4.8].flatMap((y) => [scroll(-1, seatY + y), scroll(1, seatY + y)])}
+      {/* fronton sculpté : crête dorée + fleuron (évoque le cartouche de l'inspiration) */}
+      <mesh material={gold} castShadow position={[0, backTop + 0.5, -seatD / 2]}><sphereGeometry args={[0.7, 12, 8]} /></mesh>
+      {[-0.5, -0.25, 0, 0.25, 0.5].map((a, i) => (
+        <mesh key={i} material={gold} castShadow position={[Math.sin(a * 2) * 1.1, backTop + 1 + Math.cos(a) * 0.6, -seatD / 2]} rotation-z={-a * 2}><coneGeometry args={[0.16, 1, 6]} /></mesh>
+      ))}
+      <mesh material={gold} castShadow position={[0, backTop + 2, -seatD / 2]}><coneGeometry args={[0.3, 1.1, 8]} /></mesh>
+      <mesh name="throne_seat" material={gold} position={[0, seatY + 0.65, 0]} visible={false}><boxGeometry args={[0.01, 0.01, 0.01]} /></mesh>
     </group>
   );
 }
