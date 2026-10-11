@@ -6,7 +6,7 @@ export type SocOverview = {
   agents: { id: string; name: string; role: string }[];
   reviews: { id: string; package: string; version: string; status: string; risk?: string }[];
   knowledgeConnected: boolean;
-  knowledgeReviews: { id: string; source_table: 'documents' | 'repo_files'; title: string; preview: string; review_status: string; review_reason: string | null }[];
+  knowledgeReviews: { id: string; source_table: 'documents' | 'repo_files'; title: string; version: string | null; preview: string; review_status: string; review_reason: string | null }[];
   incidents: { id: string; title: string; severity: string; status: string; decision?: string }[];
   activity: { id: string; time: string; title: string; result: string }[];
   blockedActions: number | null;

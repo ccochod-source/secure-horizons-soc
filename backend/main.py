@@ -73,6 +73,9 @@ analyste = Depends(_controle("ANALYSTE_TOKEN"))
 class KnowledgeDecision(BaseModel):
     decision: Literal["approve", "reject"]
     analyst: str = "analyste"
+    # Version (xmin) lue au moment de la revue. Si fournie, la décision est refusée (409)
+    # quand le contenu a changé depuis : l'analyste ne valide pas un texte qu'il n'a pas vu.
+    version: str | None = None
 
 
 @app.get("/health")
@@ -95,11 +98,11 @@ def decider_connaissance(table: Literal["documents", "repo_files"], item_id: UUI
     if not stockage.DATABASE_URL:
         raise HTTPException(503, "Base de connaissances indisponible.")
     try:
-        changed = knowledge.decide(table, item_id, body.decision, body.analyst)
+        changed = knowledge.decide(table, item_id, body.decision, body.analyst, body.version)
     except Exception as exc:
         raise HTTPException(503, "Décision non enregistrée.") from exc
     if not changed:
-        raise HTTPException(409, "Connaissance déjà traitée ou introuvable.")
+        raise HTTPException(409, "Connaissance modifiée depuis la revue, déjà traitée ou introuvable.")
     return {"status": "approved" if body.decision == "approve" else "rejected"}
 
 
