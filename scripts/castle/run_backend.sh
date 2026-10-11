@@ -25,8 +25,8 @@ export OPENAI_API_KEY="${OPENAI_API_KEY_ENQUETEUR:-${OPENAI_API_KEY:-}}"
 export OPENAI_MODEL="${OPENAI_MODEL_ENQUETEUR:-${OPENAI_MODEL:-}}"
 : "${PASSERELLE_TOKEN:?PASSERELLE_TOKEN manquant : python3 scripts/castle/init_tokens.py}"
 : "${ANALYSTE_TOKEN:?ANALYSTE_TOKEN manquant : python3 scripts/castle/init_tokens.py}"
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "OPENAI_API_KEY manquante dans .env : le backend réel ne peut pas démarrer (l'enquêteur est un appel OpenAI)." >&2
+if [ -z "${MISTRAL_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "MISTRAL_API_KEY (ou OPENAI_API_KEY) manquante dans .env : le backend réel ne peut pas démarrer (l'enquêteur est un appel LLM)." >&2
   echo "Remplir .env puis relancer. (Mode scripté sans IA, pour tests unitaires seulement : MOCK_LLM=1 $0)" >&2
   exit 1
 fi

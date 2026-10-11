@@ -26,8 +26,10 @@ class Settings:
     supabase_api_key: str | None = None  # clé envoyée à Supabase Auth pour valider un jeton d'analyste
     package_quarantine_dir: Path = REPO_ROOT / "backend" / ".quarantine"
     package_agent_env: Path | None = None  # absent : installations enregistrées, non réalisées
-    openai_api_key: str | None = None  # absent : pas d'agent victime, recherche documentaire par mots
+    openai_api_key: str | None = None  # embeddings (1536 dims) ; absent : recherche documentaire par mots
     openai_model: str = "gpt-4o-mini"
+    mistral_api_key: str | None = None  # présent : les agents IA passent par Mistral
+    mistral_model: str = "ministral-3b-2512"
     decoys_seed_on_start: bool = False
     learning_enabled: bool = False  # boucle d'amélioration : éteinte, le backend ignore les règles apprises
     tarpit_payload_chars: int = 120_000
@@ -60,6 +62,8 @@ def load_settings() -> Settings:
         package_agent_env=Path(agent_env) if agent_env else None,
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
         openai_model=os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o-mini",
+        mistral_api_key=os.getenv("MISTRAL_API_KEY", "").strip() or None,
+        mistral_model=os.getenv("MISTRAL_MODEL", "").strip() or "ministral-3b-2512",
         decoys_seed_on_start=os.getenv("DECOYS_SEED_ON_START", "false").strip().lower() not in ("0", "false", "no"),
         learning_enabled=os.getenv("LEARNING_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
         tarpit_payload_chars=_positive_int("TARPIT_PAYLOAD_CHARS", 120_000),

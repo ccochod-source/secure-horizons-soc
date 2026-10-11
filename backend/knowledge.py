@@ -70,11 +70,10 @@ def classify(title: str, content: str, *, model=None) -> Verdict:
         if pattern.search(title + "\n" + content):
             return Verdict(decision="quarantine", reason=reason.capitalize() + " détectée.")
     if model is None:
-        if not os.getenv("OPENAI_API_KEY"):
+        if not (os.getenv("MISTRAL_API_KEY") or os.getenv("OPENAI_API_KEY")):
             raise RuntimeError("Clé d'analyse absente : connaissance maintenue en attente.")
-        from langchain_openai import ChatOpenAI
-        model = ChatOpenAI(model=os.getenv("OPENAI_MODEL") or "gpt-4.1-2025-04-14", timeout=35,
-                           max_retries=0).with_structured_output(Verdict, method="json_schema")
+        from common.llm import build_chat
+        model = build_chat(timeout=35, max_retries=0).with_structured_output(Verdict)
     from langchain_core.messages import HumanMessage, SystemMessage
     result = model.invoke([
         SystemMessage(content=(

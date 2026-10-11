@@ -274,8 +274,8 @@ def enqueteur(etat: Etat) -> dict:
             action="suspendre_outil", cible=sortie["tool"],
             impact=f"Le connecteur {sortie['tool']} sera suspendu. Les autres outils de l'agent resteront disponibles.")
     else:
-        from langchain_openai import ChatOpenAI
-        modele = ChatOpenAI(model=MODELE, rate_limiter=LIMITEUR)
+        from common.llm import build_chat
+        modele = build_chat(rate_limiter=LIMITEUR)
         resultat = modele.with_structured_output(SortieEnqueteur).invoke(construire_consigne(etat))
     return {"enquete": resultat.model_dump()}
 

@@ -172,8 +172,8 @@ def verdict_ia(d: DemandeContreVerification, faits: list[dict], enquete: dict | 
                              raisons=[Raison(affirmation=f["texte"], faits=[f["id"]]) for f in critiques])
         return VerdictIA(verdict="sur", resume="Aucun fait ne signale de risque.",
                          raisons=[Raison(affirmation=faits[0]["texte"], faits=[faits[0]["id"]])])
-    from langchain_openai import ChatOpenAI
-    modele = ChatOpenAI(model=MODELE, rate_limiter=LIMITEUR)
+    from common.llm import build_chat
+    modele = build_chat(rate_limiter=LIMITEUR)
     return modele.with_structured_output(VerdictIA).invoke(consigne(d, faits, enquete))
 
 

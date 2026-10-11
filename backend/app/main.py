@@ -22,6 +22,7 @@ from decoys import DecoyDefense, Detector, PostgresDecoyStore, Seeder, Tarpit
 from decoys.learning import DecoyLearning
 from decoys.routes import router as decoys_router
 from env_attacked import OpenAIClient, PostgresCompanyData, VictimAgent, build_servers, embed_documents
+from env_attacked.llm import MISTRAL_CHAT_URL
 from env_attacked.routes import router as chat_router
 from gateway.events import PostgresEventStore
 from gateway.defense import DefenseBridge
@@ -88,8 +89,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.confinement_token = os.getenv("CONFINEMENT_TOKEN", "")
         # Environnement attaqué : ses serveurs MCP tournent dans ce processus, derrière la passerelle.
         company = PostgresCompanyData(db)
-        openai = (OpenAIClient(http, settings.openai_api_key, settings.openai_model)
-                  if settings.openai_api_key else None)
+        # Agent DevBot : Mistral dès qu'une clé Mistral est fournie, sinon OpenAI ; embeddings sur OpenAI.
+        if settings.mistral_api_key:
+            openai = OpenAIClient(http, settings.mistral_api_key, settings.mistral_model,
+                                  chat_url=MISTRAL_CHAT_URL, provider="mistral",
+                                  embed_key=settings.openai_api_key)
+            logger.info("agent DevBot via Mistral (%s)", settings.mistral_model)
+        elif settings.openai_api_key:
+            openai = OpenAIClient(http, settings.openai_api_key, settings.openai_model)
+        else:
+            openai = None
         if openai is not None:
             try:
                 logger.info("embeddings calculés pour %d document(s)", await embed_documents(company, openai))

@@ -304,19 +304,19 @@ export class CastleAnimator {
       if (!this.find('throne_beam')) {
         const beam = new THREE.PointLight('#ffd36b', 0, 160, 1.1);
         beam.name = 'throne_beam';
-        beam.position.set(0, 44, 20);
+        beam.position.set(0, 22, 20);
         this.props.add(beam);
         void this.tweens.run(0.8, (k) => void (beam.intensity = 180 * k));
       }
       const from = t.position.clone();
       const fromScale = t.scale.x;
       await this.tweens.run(1.8, (k) => {
-        t.position.set(from.x + (0 - from.x) * k, from.y + (30 - from.y) * k, from.z + (20 - from.z) * k);
+        t.position.set(from.x + (0 - from.x) * k, from.y + (14 - from.y) * k, from.z + (20 - from.z) * k);
         t.scale.setScalar(fromScale + (this.throneHomeScale * 1.7 - fromScale) * k);
       }, { ease: easeOut, tag: 'throne_move' });
       this.tweens.loop('throne', (time) => {
         t.rotation.y = time * 0.5;
-        t.position.y = 30 + Math.sin(time * 1.2) * 1.5;
+        t.position.y = 14 + Math.sin(time * 1.2) * 1;
       });
     } else {
       this.tweens.stopLoop('throne');

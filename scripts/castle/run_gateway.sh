@@ -18,7 +18,9 @@ load_env() {
 load_env .env.victim
 load_env .env
 case "${DATABASE_URL:-}" in postgres://*|postgresql://*) ;; *) echo "DATABASE_URL PostgreSQL requis dans .env" >&2; exit 1 ;; esac
-: "${OPENAI_API_KEY:?OPENAI_API_KEY requis dans .env (agent DevBot)}"
+if [ -z "${MISTRAL_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "MISTRAL_API_KEY (ou OPENAI_API_KEY) requis dans .env pour l'agent DevBot." >&2; exit 1
+fi
 export GATEWAY_TOKEN="${GATEWAY_TOKEN:-${VICTIM_GATEWAY_TOKEN:-}}"
 # Modèle de DevBot : OPENAI_MODEL_DEVBOT s’il est défini (sans toucher aux autres services), sinon gpt-4o-mini.
 [ -n "${OPENAI_MODEL_DEVBOT:-}" ] && export OPENAI_MODEL="$OPENAI_MODEL_DEVBOT"
