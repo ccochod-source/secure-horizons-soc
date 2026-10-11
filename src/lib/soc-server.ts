@@ -136,6 +136,7 @@ export async function loadSocSnapshot(): Promise<SocOverview> {
         if (typeof row.id !== 'string' || !['documents', 'repo_files'].includes(String(row.source_table))) return [];
         return [{ id: row.id, source_table: row.source_table as 'documents' | 'repo_files',
           title: typeof row.title === 'string' ? row.title : 'Sans titre',
+          version: typeof row.version === 'string' ? row.version : null,
           preview: typeof row.preview === 'string' ? row.preview : '',
           review_status: typeof row.review_status === 'string' ? row.review_status : 'pending',
           review_reason: typeof row.review_reason === 'string' ? row.review_reason : null }];

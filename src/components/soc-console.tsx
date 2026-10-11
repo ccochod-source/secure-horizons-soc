@@ -162,14 +162,16 @@ export function SocConsole() {
     }
   }
 
-  async function decideKnowledge(table: 'documents' | 'repo_files', id: string, decision: 'approve' | 'reject') {
+  async function decideKnowledge(table: 'documents' | 'repo_files', id: string, decision: 'approve' | 'reject', version: string | null) {
     if (knowledgeDecisionBusy) return;
     setKnowledgeDecisionBusy(id);
     setKnowledgeDecisionError('');
     try {
       const response = await fetch('/api/knowledge/decision', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table, id, decision }),
+        // La version (xmin) affichée accompagne la décision : si le contenu a changé depuis,
+        // le backend refuse (409) et la liste doit être rafraîchie avant de re-décider.
+        body: JSON.stringify({ table, id, decision, version: version ?? undefined }),
       });
       const data: unknown = await response.json();
       if (!response.ok) {
@@ -287,8 +289,8 @@ export function SocConsole() {
               <strong>{item.title}</strong><p>{item.source_table === 'documents' ? 'Document' : 'Fichier'} · {item.review_status === 'pending' ? 'Analyse en cours' : 'En quarantaine'}</p>
               {item.review_reason ? <p>Motif : {item.review_reason}</p> : null}
               {item.preview ? <p className="knowledge-preview">{item.preview}</p> : null}
-              <div className="incident-actions"><button type="button" disabled={!!knowledgeDecisionBusy} onClick={() => void decideKnowledge(item.source_table, item.id, 'approve')}>Approuver</button>
-                <button type="button" disabled={!!knowledgeDecisionBusy} onClick={() => void decideKnowledge(item.source_table, item.id, 'reject')}>Refuser</button></div>
+              <div className="incident-actions"><button type="button" disabled={!!knowledgeDecisionBusy} onClick={() => void decideKnowledge(item.source_table, item.id, 'approve', item.version)}>Approuver</button>
+                <button type="button" disabled={!!knowledgeDecisionBusy} onClick={() => void decideKnowledge(item.source_table, item.id, 'reject', item.version)}>Refuser</button></div>
             </li>)}</ul> : <EmptyState title="Aucune connaissance suspecte" detail="Les nouvelles données sont examinées avant d’être accessibles à l’assistant." />}
         </section>
         <section className="panel" aria-labelledby="agents-title"><div className="panel-heading"><h2 id="agents-title">Agents</h2><span>{agents.length} branché{agents.length > 1 ? 's' : ''}</span></div>
