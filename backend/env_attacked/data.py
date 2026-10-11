@@ -47,7 +47,7 @@ class PostgresCompanyData:
         async with self._db.as_owner() as conn:
             if embedding is not None:
                 cur = await conn.execute(
-                    "select id, title, content from public.documents where embedding is not null "
+                    "select id, title, content from public.documents where review_status = 'approved' and embedding is not null "
                     "order by embedding operator(extensions.<=>) %s::extensions.vector limit %s",
                     (_vector(embedding), limit))
                 rows = await cur.fetchall()
@@ -61,7 +61,8 @@ class PostgresCompanyData:
                 "select id, title, content from ("
                 "  select d.id, d.title, d.content, d.created_at, ("
                 "    select count(*) filter (where d.content ilike w) + 2 * count(*) filter (where d.title ilike w)"
-                "    from unnest(%s::text[]) w) as score from public.documents d) ranked "
+                "    from unnest(%s::text[]) w) as score from public.documents d "
+                "    where d.review_status = 'approved') ranked "
                 "where score > 0 order by score desc, created_at limit %s", (words, limit))
             return await cur.fetchall()
 
@@ -71,7 +72,8 @@ class PostgresCompanyData:
             cur = await conn.execute(
                 "select r.name || '/' || f.path as path from public.repo_files f "
                 "join public.repositories r on r.id = f.repository_id "
-                "where %s = '' or f.path like %s or r.name || '/' || f.path like %s order by 1 limit 200",
+                "where f.review_status = 'approved' and (%s = '' or f.path like %s or r.name || '/' || f.path like %s) "
+                "order by 1 limit 200",
                 (prefix, prefix + "%", prefix + "%"))
             return [row["path"] for row in await cur.fetchall()]
 
@@ -81,7 +83,8 @@ class PostgresCompanyData:
             cur = await conn.execute(
                 "select r.name || '/' || f.path as path, f.content from public.repo_files f "
                 "join public.repositories r on r.id = f.repository_id "
-                "where f.path = %s or r.name || '/' || f.path = %s order by r.name desc limit 1",
+                "where f.review_status = 'approved' and (f.path = %s or r.name || '/' || f.path = %s) "
+                "order by r.name desc limit 1",
                 (wanted, wanted))
             return await cur.fetchone()
 
@@ -94,7 +97,8 @@ class PostgresCompanyData:
     async def documents_without_embedding(self) -> list[dict[str, Any]]:
         async with self._db.as_owner() as conn:
             cur = await conn.execute(
-                "select id, title, content from public.documents where embedding is null order by created_at")
+                "select id, title, content from public.documents "
+                "where review_status = 'approved' and embedding is null order by created_at")
             return await cur.fetchall()
 
     async def set_embedding(self, document_id: UUID, embedding: list[float]) -> None:
