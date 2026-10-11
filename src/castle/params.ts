@@ -3,7 +3,7 @@
 // Axes : +x = est (droite sur la vue « top »), +z = sud (bas sur la vue « top », face avant), +y = haut.
 
 export const PALETTE = {
-  background: '#d6d5d0',
+  background: '#F4F4F2',
   grass: '#86a854',
   grassSpeckle: '#729447',
   earth: '#5e4a3c',

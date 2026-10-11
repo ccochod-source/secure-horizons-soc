@@ -1,12 +1,10 @@
-import path from 'node:path';
 import { isLocalRequest } from '@/lib/local-request';
+import { openGatewayState, readGatewayState } from '@/lib/gateway-state';
 import { privateValue } from '@/lib/soc-server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store' };
-// État local de la passerelle (backend/gateway/defense.py) : mesures appliquées sur décision d'un analyste.
-const STATE = path.join(process.cwd(), '.runtime', 'gateway-state.sqlite');
 
 const GATEWAY = 'http://127.0.0.1:8002';
 
@@ -16,20 +14,12 @@ async function gateway(path: string, method = 'GET') {
   return fetch(`${GATEWAY}${path}`, { method, headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(8000) });
 }
 
-async function open() {
-  const { DatabaseSync } = await import('node:sqlite');
-  return new DatabaseSync(STATE);
-}
 
 /** Mesures en vigueur : outils suspendus pour un agent, packages mis en quarantaine. */
 export async function GET(request: Request) {
   if (!isLocalRequest(request)) return Response.json({ error: 'Réservé à l’interface locale.' }, { status: 403, headers });
   try {
-    const db = await open();
-    const suspensions = db.prepare('select agent_id, tool, incident_id, approved_by from suspensions').all();
-    let packages: unknown[] = [];
-    try { packages = db.prepare('select package, incident_id, approved_by from quarantined_packages').all(); } catch { /* table créée au prochain démarrage */ }
-    db.close();
+    const { suspensions, packages } = await readGatewayState();
     let documents: unknown[] = [];
     try { documents = ((await (await gateway('/confinement/documents')).json()) as { documents: unknown[] }).documents ?? []; } catch { /* passerelle arrêtée */ }
     return Response.json({ suspensions, packages, documents }, { headers });
@@ -56,7 +46,7 @@ export async function DELETE(request: Request) {
     }
   }
   try {
-    const db = await open();
+    const db = await openGatewayState();
     let n = 0;
     if (pkg) {
       if (!/^(pypi|npm):[\w@/.-]{1,214}$/.test(pkg)) return Response.json({ error: 'Package invalide.' }, { status: 400, headers });

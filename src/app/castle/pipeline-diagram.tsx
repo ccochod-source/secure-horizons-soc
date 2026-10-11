@@ -47,7 +47,7 @@ export function PipelineDiagram({ steps }: { steps: TraceStep[] }) {
 
   return (
     <div>
-      <svg viewBox="0 0 680 500" role="img" aria-label="Architecture en six blocs, animée par le backend" style={{ width: '100%', display: 'block', background: '#F8F9FB', borderRadius: 8, border: '1px solid #e4e8ed' }}>
+      <svg viewBox="0 0 680 500" role="img" aria-label="Architecture en six blocs, animée par le backend" style={{ width: '100%', display: 'block', background: 'var(--surface-2)', borderRadius: 'var(--r-md)' }}>
         <defs>
           <marker id="pd-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

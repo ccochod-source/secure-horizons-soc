@@ -16,8 +16,8 @@ export function ConfidenceGauge({ confidence, proven, total, size = 'large', cap
 }) {
   const pct = Math.round(Math.max(0, Math.min(1, confidence)) * 100);
   const ok = confidence >= threshold;
-  const color = ok ? '#285cc4' : confidence >= 0.4 ? '#d98b00' : '#c2362b';
-  const bg = ok ? '#eef3fc' : confidence >= 0.4 ? '#fff4dc' : '#ffe8e5';
+  const color = ok ? '#7C6CF0' : confidence >= 0.4 ? '#B37A00' : '#D23A4B';
+  const bg = ok ? '#E9E6FD' : confidence >= 0.4 ? '#FFF2C7' : '#FFE3E6';
   const d = size === 'large' ? 92 : 64;
   const stroke = size === 'large' ? 10 : 7;
   const r = (d - stroke) / 2;
