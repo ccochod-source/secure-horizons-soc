@@ -26,7 +26,7 @@ export interface DashboardData {
     humanActions: number; attacksDetected: number; humanActionsPerAttack: number | null; // actions humaines / attaque détectée
   };
   /** Boucle d'apprentissage : règles de défense apprises (liste des packages/leurres), version qui s'auto-incrémente. */
-  learning: { version: number; proposed: number; active: number; rolledBack: number; byList: { package: { active: number; proposed: number }; decoy: { active: number; proposed: number } }; series: number[] };
+  learning: { version: number; proposed: number; active: number; rolledBack: number; byList: { package: { active: number; proposed: number }; decoy: { active: number; proposed: number } }; series: number[]; attacksTotal: number; sessionsTotal: number; protections: number; points: { label: string; neutralized: number; protections: number }[] };
   series: { label: string; sessions: number; threats: number }[];
   split: { safe: number; threats: number; open: number };
   incidents: { id: string; title: string; severity: string; status: string; confidence: number; proposal: string; decision: string; time: string }[];
@@ -119,17 +119,7 @@ export async function GET(request: Request) {
   const decoyRules = decoyRulesRes ? ((await decoyRulesRes.json()) as { status: string }[]) : [];
   const metaRows = metaRes ? ((await metaRes.json()) as { current_version: number }[]) : [];
   const countBy = (rows: { status: string }[], s: string) => rows.filter((r) => r.status === s).length;
-  const learning: DashboardData['learning'] = {
-    version: metaRows[0]?.current_version ?? 0,
-    proposed: countBy(pkgRules, 'proposed') + countBy(decoyRules, 'proposed'),
-    active: countBy(pkgRules, 'active') + countBy(decoyRules, 'active'),
-    rolledBack: countBy(pkgRules, 'rolled_back') + countBy(decoyRules, 'rolled_back'),
-    byList: {
-      package: { active: countBy(pkgRules, 'active'), proposed: countBy(pkgRules, 'proposed') },
-      decoy: { active: countBy(decoyRules, 'active'), proposed: countBy(decoyRules, 'proposed') },
-    },
-    series: Array.from({ length: Math.max(1, metaRows[0]?.current_version ?? 0) + 1 }, (_, i) => i),
-  };
+  const activeRules = countBy(pkgRules, 'active') + countBy(decoyRules, 'active');
 
   const cutoff = now - span;
   const current = events.filter((e) => Date.parse(e.occurred_at) >= cutoff);
@@ -147,6 +137,25 @@ export async function GET(request: Request) {
     const d = new Date(start);
     return { label: range === '7d' ? d.toLocaleDateString('fr-FR', { weekday: 'short' }) : `${d.getHours()}h`, sessions: a.sessions, threats: a.neutralized };
   });
+
+  // Amélioration de la sécurité : courbe cumulée des attaques neutralisées sur la période (grandit à chaque requête).
+  let accNeutralized = 0;
+  const learningPoints = series.map((s) => { accNeutralized += s.threats; return { label: s.label, neutralized: accNeutralized, protections: activeRules }; });
+  const learning: DashboardData['learning'] = {
+    version: metaRows[0]?.current_version ?? 0,
+    proposed: countBy(pkgRules, 'proposed') + countBy(decoyRules, 'proposed'),
+    active: activeRules,
+    rolledBack: countBy(pkgRules, 'rolled_back') + countBy(decoyRules, 'rolled_back'),
+    byList: {
+      package: { active: countBy(pkgRules, 'active'), proposed: countBy(pkgRules, 'proposed') },
+      decoy: { active: countBy(decoyRules, 'active'), proposed: countBy(decoyRules, 'proposed') },
+    },
+    series: learningPoints.map((p) => p.neutralized),
+    attacksTotal: cur.neutralized,
+    sessionsTotal: cur.sessions,
+    protections: activeRules,
+    points: learningPoints,
+  };
 
   const incidents = incidentsRaw.map((i) => ({
     id: String(i.id), title: String(i.title ?? ''), severity: String(i.severity ?? ''), status: String(i.status ?? ''),
