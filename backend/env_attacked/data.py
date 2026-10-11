@@ -124,7 +124,8 @@ class MemoryCompanyData:
     async def search_documents(
         self, query: str, embedding: list[float] | None, limit: int = 3
     ) -> list[dict[str, Any]]:
-        visible = [d for d in self.documents if d.get("review_status") != "quarantined"]
+        # Comme en base : seuls les documents approuvés sont rendus (absent = approuvé, pour les tests).
+        visible = [d for d in self.documents if d.get("review_status", "approved") == "approved"]
         embedded = [d for d in visible if d["embedding"] is not None]
         if embedding is not None and embedded:
             ranked = sorted(embedded, key=lambda d: -sum(a * b for a, b in zip(d["embedding"], embedding)))

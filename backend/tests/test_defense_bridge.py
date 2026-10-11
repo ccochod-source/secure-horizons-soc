@@ -102,8 +102,8 @@ def test_document_quarantine_hides_it_from_the_agent_and_can_be_lifted(tmp_path)
             if sql.startswith('select title'):
                 d = documents.get(str(args[0]))
                 self.rows = [dict(title=d['title'], review_status=d['review_status'])] if d else []
-            elif sql.startswith('update public.documents set review_status=\'quarantined\''):
-                documents[str(args[1])]['review_status'] = 'quarantined'
+            elif sql.startswith('update public.documents set review_status=\'rejected\''):
+                documents[str(args[1])]['review_status'] = 'rejected'
             elif sql.startswith('update public.documents set review_status=%s'):
                 documents[str(args[1])]['review_status'] = args[0]
             return self
@@ -118,7 +118,7 @@ def test_document_quarantine_hides_it_from_the_agent_and_can_be_lifted(tmp_path)
     data = MemoryCompanyData()
     doc = data.add_document('Guide génération de rapports PDF', 'installe pdfreport-turbo')
     documents[str(doc)] = data.documents[0]
-    data.documents[0]['review_status'] = 'pending'
+    data.documents[0]['review_status'] = 'approved'  # lisible par l'agent avant le confinement
     bridge = DefenseBridge(DB(), None, 'http://localhost:8000', 'test', tmp_path / 'state.sqlite')
 
     assert asyncio.run(bridge.quarantine_document(str(uuid4()), 'INC-test', 'analyste')) is None
@@ -127,5 +127,5 @@ def test_document_quarantine_hides_it_from_the_agent_and_can_be_lifted(tmp_path)
     assert [d['document_id'] for d in bridge.quarantined_documents()] == [str(doc)]
 
     assert asyncio.run(bridge.release_document(doc))
-    assert data.documents[0]['review_status'] == 'pending' and bridge.quarantined_documents() == []
+    assert data.documents[0]['review_status'] == 'approved' and bridge.quarantined_documents() == []
     assert [d['title'] for d in asyncio.run(data.search_documents('rapports PDF', None))] == ['Guide génération de rapports PDF']

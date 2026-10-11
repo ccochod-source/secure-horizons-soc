@@ -1,6 +1,6 @@
 import type { CastleAnimator } from './animator';
 import type { BlockId, DefenderStep, TraceStep } from './pipeline-trace';
-import { TESTS, type ContreVerification, type DefenseIncident, type RunEvent, type RunOutcome, type RunTrace, type TestKind } from './run-types';
+import { TESTS, type ContreVerification, type DefenseIncident, type KnowledgeAdmission, type RunEvent, type RunOutcome, type RunTrace, type TestKind } from './run-types';
 
 /**
  * Metteur en scène d'un test réel : chaque nouvel événement de `public.events` déclenche
@@ -12,6 +12,29 @@ export class RunDirector {
   private reviewState: string | null = null;
   private incidentKey = '';
   private cvStatut = '';
+  private kStatus = '';
+
+  /** Admission du guide : pigeon au dépôt, alerte et trône en quarantaine, victoire si refusé. */
+  updateKnowledge(k: KnowledgeAdmission | null) {
+    if (!k || k.status === this.kStatus) return;
+    const prev = this.kStatus;
+    this.kStatus = k.status;
+    const a = this.animator;
+    this.queue = this.queue.then(async () => {
+      if (!prev) void a.mailArrive();
+      if (k.status === 'quarantined') {
+        await a.setAlarm('Modérée');
+        await a.throneAttention(true);
+      } else if (k.status === 'approved') {
+        await a.throneAttention(false);
+      } else if (k.status === 'rejected') {
+        await a.throneAttention(false);
+        await a.setAlarm('off');
+        await a.victory();
+        a.clearBattle();
+      }
+    }).catch(() => {});
+  }
 
   /** Contre-vérification : alarme pendant l'attente de confirmation, retrait animé si l'analyste annule. */
   updateReverification(cvr: ContreVerification | null) {
@@ -152,8 +175,16 @@ function decoyLabel(e: RunEvent | undefined): string {
   return decoys.map((d, i) => `${d}${where[i] ? ` (${where[i].replace(/^docs:/, 'document « ').replace(/^files?:/, 'fichier « ')}${where[i].includes(':') ? ' »' : ''})` : ''}`).join(', ');
 }
 
-export function narrate(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, running: boolean, incident: DefenseIncident | null = null, cvr: ContreVerification | null = null): Narration[] {
+export function narrate(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, running: boolean, incident: DefenseIncident | null = null, cvr: ContreVerification | null = null, knowledge: KnowledgeAdmission | null = null): Narration[] {
   const out: Narration[] = [];
+  if (kind === 'packages' && knowledge) {
+    out.push({ id: 'k-dep', state: 'done', title: `Nouveau document déposé : « ${knowledge.title} »`, meaning: 'Il contient une consigne cachée pour l’assistant : installer « pdfreport-turbo ». Tant qu’il n’est pas validé, aucun agent ne peut le lire.', castle: 'Un pigeon apporte le document.' });
+    if (knowledge.status === 'pending') out.push({ id: 'k-wait', state: 'active', title: 'Admission des connaissances : analyse en cours…', meaning: 'Règles de détection, puis une IA qui traite le document comme une donnée (jamais comme une instruction).' });
+    else if (knowledge.status === 'quarantined') out.push({ id: 'k-q', state: 'error', title: 'Document mis en quarantaine par l’admission', meaning: knowledge.reason ?? '', castle: 'Alerte et trône allumés : un analyste doit trancher (voir en haut).' });
+    else if (knowledge.status === 'rejected') out.push({ id: 'k-r', state: 'done', title: knowledge.decidedByAnalyst ? 'Refusé par l’analyste : attaque stoppée en amont' : 'Document refusé', meaning: 'Le guide piégé ne sera jamais lu par DevBot : l’attaque s’arrête avant même d’atteindre l’agent.', castle: 'Victoire sans combat.' });
+    else if (knowledge.status === 'approved') out.push({ id: 'k-a', state: knowledge.decidedByAnalyst ? 'error' : 'done', title: knowledge.decidedByAnalyst ? 'L’analyste a laissé passer le document : l’attaque continue' : 'Document approuvé par l’admission', meaning: 'DevBot peut désormais le lire. Les défenses suivantes prennent le relais : contrôle des packages, puis agents défenseurs.' });
+    if (knowledge.status !== 'approved') return out;
+  }
   const t = trace ?? { traceId: null, events: [], review: null };
   const req = first(t, 'user_request');
   if (running && !req) {
@@ -278,10 +309,14 @@ export function narrate(kind: TestKind, trace: RunTrace | null, outcome: RunOutc
 // Étapes du schéma « six blocs »
 // ---------------------------------------------------------------------------------------------
 
-export function traceRun(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, incident: DefenseIncident | null = null): TraceStep[] {
+export function traceRun(kind: TestKind, trace: RunTrace | null, outcome: RunOutcome | null, incident: DefenseIncident | null = null, knowledge: KnowledgeAdmission | null = null): TraceStep[] {
   const t = trace ?? { traceId: null, events: [], review: null };
-  if (!t.events.length) return [];
   const steps: TraceStep[] = [];
+  if (kind === 'packages' && knowledge) {
+    const st = knowledge.status === 'pending' ? 'active' : knowledge.status === 'quarantined' ? 'active' : knowledge.status === 'rejected' ? 'done' : knowledge.decidedByAnalyst ? 'error' : 'done';
+    steps.push({ id: 'k', block: 'inventory', state: st, label: `Admission des connaissances : ${knowledge.status === 'pending' ? 'analyse…' : knowledge.status === 'quarantined' ? 'quarantaine, décision humaine requise' : knowledge.status === 'rejected' ? 'document refusé, attaque stoppée' : 'document approuvé'}`, detail: knowledge.reason ?? undefined });
+  }
+  if (!t.events.length) return steps;
   const push = (id: string, block: BlockId, state: TraceStep['state'], label: string, detail?: string, sub?: DefenderStep) => steps.push({ id, block, state, label, detail, sub });
   const req = first(t, 'user_request');
   push('env', 'env', 'done', `DevBot : ${kind === 'leurres' ? 'demande reçue' : 'installation demandée'}`, text(req) || undefined);

@@ -80,16 +80,18 @@ class DefenseBridge:
             return c.execute('select 1 from quarantined_packages where package=?', (self.package_key(reference),)).fetchone() is not None
 
     async def quarantine_document(self, document_id, incident, approved_by):
-        """Passe un document en « quarantined » : la recherche de l'agent ne le rend plus. None si inconnu."""
+        """Écarte un document par confinement : statut « rejected » avec le motif. Il n'est plus rendu à l'agent
+        (seuls les documents « approved » le sont) et n'entre pas dans la file d'attente des analystes, réservée
+        aux connaissances « pending » / « quarantined » de l'admission. None si inconnu."""
         async with self.db.as_owner() as conn:
             row = await (await conn.execute(
                 "select title, review_status from public.documents where id=%s", (document_id,))).fetchone()
             if row is None:
                 return None
             await conn.execute(
-                "update public.documents set review_status='quarantined', review_reason=%s, reviewed_at=now() where id=%s",
-                (f"Quarantaine après l'incident {incident}, approuvée par {approved_by}", document_id))
-        previous = row['review_status'] if row['review_status'] != 'quarantined' else 'pending'
+                "update public.documents set review_status='rejected', review_reason=%s, reviewed_at=now() where id=%s",
+                (f"Confinement après l'incident {incident}, approuvé par {approved_by}", document_id))
+        previous = row['review_status'] if row['review_status'] != 'rejected' else 'approved'
         with self.connect() as c:
             c.execute('insert or replace into quarantined_documents values (?,?,?,?,?)',
                       (str(document_id), row['title'], previous, incident, approved_by))

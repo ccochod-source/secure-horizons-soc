@@ -101,6 +101,17 @@ async def record_response(trace_id: UUID, body: ResponseIn, gateway: Gateway = D
     return {"event_id": event_id, "diverted": session.diverted}
 
 
+@router.post("/gateway/embeddings")
+async def embed_missing(request: Request) -> dict[str, Any]:
+    """Calcule l'embedding des documents approuvés qui n'en ont pas (ex. connaissance approuvée par un analyste) :
+    sans lui, la recherche vectorielle de l'agent ne la trouverait pas."""
+    from env_attacked import embed_documents
+    openai = getattr(request.app.state, "openai", None)
+    if openai is None:
+        raise HTTPException(503, "OpenAI non configuré : embeddings indisponibles.")
+    return {"embedded": await embed_documents(request.app.state.company, openai)}
+
+
 @router.get("/gateway/tools")
 async def list_tools(gateway: Gateway = Depends(_gateway)) -> dict[str, Any]:
     return {"tools": gateway.tools()}

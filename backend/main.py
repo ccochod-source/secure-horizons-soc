@@ -98,6 +98,17 @@ def connaissances_a_verifier():
         raise HTTPException(503, "Revue des connaissances indisponible.") from exc
 
 
+@app.get("/knowledge/{table}/{item_id}", dependencies=[analyste])
+def statut_connaissance(table: Literal["documents", "repo_files"], item_id: UUID):
+    if not stockage.DATABASE_URL:
+        raise HTTPException(503, "Base de connaissances indisponible.")
+    try:
+        statut, raison = knowledge.status(table, item_id)
+    except Exception as exc:
+        raise HTTPException(503, "Statut indisponible.") from exc
+    return {"status": statut, "reason": raison}
+
+
 @app.post("/knowledge/{table}/{item_id}/decision", dependencies=[analyste])
 def decider_connaissance(table: Literal["documents", "repo_files"], item_id: UUID, body: KnowledgeDecision):
     if not stockage.DATABASE_URL:

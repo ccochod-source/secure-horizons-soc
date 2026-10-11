@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Lance le backend de défense RÉEL en local : enquêteur OpenAI (clé obligatoire), incidents en SQLite dans .runtime/.
+# Lance le backend de défense RÉEL en local : enquêteur OpenAI (clé obligatoire), incidents et admission des
+# connaissances sur Supabase (DATABASE_URL PostgreSQL, comme `npm run dev:all`).
 # Les jetons PASSERELLE_TOKEN / ANALYSTE_TOKEN viennent de .env.victim ; OPENAI_API_KEY (et OPENAI_MODEL) de .env.
 # Pour la stack complète (Supabase, RAG, passerelle), utiliser `npm run dev:all` à la place.
 set -euo pipefail
@@ -30,7 +31,8 @@ if [ -z "${OPENAI_API_KEY:-}" ]; then
   exit 1
 fi
 mkdir -p .runtime
-export MOCK_LLM="${MOCK_LLM:-0}" DATABASE_URL="" SQLITE_PATH="$PWD/.runtime/alex-8000-incidents.sqlite" CHECKPOINT_PATH="$PWD/.runtime/alex-8000-checkpoints.sqlite"
+case "${DATABASE_URL:-}" in postgres://*|postgresql://*) ;; *) echo "DATABASE_URL PostgreSQL requis dans .env (admission des connaissances)." >&2; exit 1 ;; esac
+export MOCK_LLM="${MOCK_LLM:-0}" CHECKPOINT_PATH="$PWD/.runtime/alex-8000-checkpoints.sqlite"
 # Le confinement approuvé est exécuté pour de vrai par la passerelle (8002), qui suspend l’outil.
 export FRONTEND_ORIGIN=http://localhost:3100 CONFINEMENT_URL="${CONFINEMENT_URL:-http://127.0.0.1:8002/confinement}"
 [ "$MOCK_LLM" = "1" ] && echo "ATTENTION : MOCK_LLM=1, enquêteur scripté (pas un vrai test)." >&2

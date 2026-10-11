@@ -91,6 +91,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             upstreams.append(upstream)
             await gateway.register(upstream)
         app.state.db = db
+        app.state.company, app.state.openai = company, openai
         app.state.gateway = gateway
         app.state.gateway_token = settings.gateway_token
         app.state.packages = packages
