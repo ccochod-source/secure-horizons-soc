@@ -123,12 +123,35 @@ export async function loadSocSnapshot(): Promise<SocOverview> {
     reviews = data.reviews.map(r => ({id: String(r.id), package: String(r.package_name), version: typeof r.version === 'string' ? r.version : '—', status: String(r.state), risk: String(r.risk_level || 'À qualifier')}));
     gatewayConnected = true;
   } catch { /* Display unavailability rather than an empty successful result. */ }
+  let knowledgeReviews: SocOverview['knowledgeReviews'] = [];
+  let knowledgeConnected = false;
+  if (backendBase) {
+    try {
+      const raw = await getJson(`${backendBase}/knowledge/reviews`,
+        analystToken ? { Authorization: `Bearer ${analystToken}` } : {});
+      if (!Array.isArray(raw)) throw new Error('Réponse connaissances invalide.');
+      knowledgeReviews = raw.flatMap((item: unknown) => {
+        if (!item || typeof item !== 'object') return [];
+        const row = item as Record<string, unknown>;
+        if (typeof row.id !== 'string' || !['documents', 'repo_files'].includes(String(row.source_table))) return [];
+        return [{ id: row.id, source_table: row.source_table as 'documents' | 'repo_files',
+          title: typeof row.title === 'string' ? row.title : 'Sans titre',
+          version: typeof row.version === 'string' ? row.version : null,
+          preview: typeof row.preview === 'string' ? row.preview : '',
+          review_status: typeof row.review_status === 'string' ? row.review_status : 'pending',
+          review_reason: typeof row.review_reason === 'string' ? row.review_reason : null }];
+      });
+      knowledgeConnected = true;
+    } catch { /* L'ancien backend peut encore tourner pendant son redémarrage. */ }
+  }
   return {
     updatedAt: checkedAt,
     databaseConnected: true,
     pipelineConnected,
     agents,
     reviews,
+    knowledgeConnected,
+    knowledgeReviews,
     gatewayConnected,
     incidents,
     activity,

@@ -5,6 +5,8 @@ export type SocOverview = {
   gatewayConnected?: boolean;
   agents: { id: string; name: string; role: string }[];
   reviews: { id: string; package: string; version: string; status: string; risk?: string }[];
+  knowledgeConnected: boolean;
+  knowledgeReviews: { id: string; source_table: 'documents' | 'repo_files'; title: string; version: string | null; preview: string; review_status: string; review_reason: string | null }[];
   incidents: { id: string; title: string; severity: string; status: string; decision?: string }[];
   activity: { id: string; time: string; title: string; result: string }[];
   blockedActions: number | null;
@@ -18,7 +20,7 @@ export function unconnectedOverview(checkedAt: string): SocOverview {
     updatedAt: checkedAt,
     databaseConnected: true,
     pipelineConnected: false,
-    agents: [], reviews: [], incidents: [], activity: [],
+    agents: [], reviews: [], knowledgeConnected: false, knowledgeReviews: [], incidents: [], activity: [],
     blockedActions: null,
     completedTests: null,
   };

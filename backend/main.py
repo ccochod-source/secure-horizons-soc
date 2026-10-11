@@ -19,20 +19,44 @@ Si la variable est vide, la route correspondante est ouverte (pratique pour test
 """
 import os
 import secrets
+import threading
+import time
+from contextlib import asynccontextmanager
+from typing import Literal
+from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
+from pydantic import BaseModel
 
 import contre_verification
+import knowledge
 import stockage
 from contre_verification import Confirmation, DemandeContreVerification
 from formats import CompteRenduExecution, DecisionAnalyste, Incident, LotEvenements
 from pipeline import construire_pipeline, maintenant, nouveau_thread, preparer_evenements
 
 load_dotenv()
-app = FastAPI(title="TRACE — backend")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop = threading.Event()
+    worker = None
+    if stockage.DATABASE_URL:
+        worker = threading.Thread(target=knowledge.watch, args=(stop,), daemon=True, name="knowledge-review")
+        worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        if worker:
+            worker.join(timeout=3)
+
+
+app = FastAPI(title="TRACE — backend", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3100")],
                    allow_methods=["*"], allow_headers=["*"])
 pipeline = construire_pipeline()
@@ -51,9 +75,56 @@ passerelle = Depends(_controle("PASSERELLE_TOKEN"))
 analyste = Depends(_controle("ANALYSTE_TOKEN"))
 
 
+class KnowledgeDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+    analyst: str = "analyste"
+    # Version (xmin) lue au moment de la revue. Si fournie, la décision est refusée (409)
+    # quand le contenu a changé depuis : l'analyste ne valide pas un texte qu'il n'a pas vu.
+    version: str | None = None
+
+
 @app.get("/health")
 def sante():
     return {"ok": True}
+
+
+@app.get("/knowledge/reviews", dependencies=[analyste])
+def connaissances_a_verifier():
+    if not stockage.DATABASE_URL:
+        return []
+    try:
+        return knowledge.list_reviews()
+    except Exception as exc:
+        raise HTTPException(503, "Revue des connaissances indisponible.") from exc
+
+
+@app.post("/knowledge/{table}/{item_id}/decision", dependencies=[analyste])
+def decider_connaissance(table: Literal["documents", "repo_files"], item_id: UUID, body: KnowledgeDecision):
+    if not stockage.DATABASE_URL:
+        raise HTTPException(503, "Base de connaissances indisponible.")
+    try:
+        changed = knowledge.decide(table, item_id, body.decision, body.analyst, body.version)
+    except Exception as exc:
+        raise HTTPException(503, "Décision non enregistrée.") from exc
+    if not changed:
+        raise HTTPException(409, "Connaissance modifiée depuis la revue, déjà traitée ou introuvable.")
+    return {"status": "approved" if body.decision == "approve" else "rejected"}
+
+
+@app.post("/knowledge/demo", dependencies=[passerelle])
+def simuler_ajout_connaissance():
+    if not stockage.DATABASE_URL:
+        raise HTTPException(503, "Base de connaissances indisponible.")
+    try:
+        result = knowledge.plant_demo()
+        for _ in range(24):
+            result["status"], result["reason"] = knowledge.status("documents", result["id"])
+            if result["status"] != "pending":
+                break
+            time.sleep(0.5)
+        return result
+    except Exception as exc:
+        raise HTTPException(503, "Ajout de démonstration impossible.") from exc
 
 
 @app.post("/events", dependencies=[passerelle])

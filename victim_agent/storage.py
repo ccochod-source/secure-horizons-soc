@@ -86,6 +86,7 @@ class SupabaseStore:
         common = {
             "select": "id,title,doc_type,source,content,is_decoy",
             "is_decoy": "eq.false",
+            "review_status": "eq.approved",
             "limit": str(limit),
         }
         # The existing table has no combined title/content search function.
