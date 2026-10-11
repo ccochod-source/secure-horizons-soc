@@ -29,6 +29,7 @@ class Settings:
     openai_api_key: str | None = None  # absent : pas d'agent victime, recherche documentaire par mots
     openai_model: str = "gpt-4o-mini"
     decoys_seed_on_start: bool = False
+    learning_enabled: bool = False  # boucle d'amélioration : éteinte, le backend ignore les règles apprises
     tarpit_payload_chars: int = 120_000
 
 
@@ -60,6 +61,7 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
         openai_model=os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o-mini",
         decoys_seed_on_start=os.getenv("DECOYS_SEED_ON_START", "false").strip().lower() not in ("0", "false", "no"),
+        learning_enabled=os.getenv("LEARNING_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
         tarpit_payload_chars=_positive_int("TARPIT_PAYLOAD_CHARS", 120_000),
     )
 

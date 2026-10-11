@@ -1,0 +1,150 @@
+// Paramètres uniques du château. Toute dimension du modèle vient d'ici.
+// Unité : 1 u = 1/100 du côté de la plateforme.
+// Axes : +x = est (droite sur la vue « top »), +z = sud (bas sur la vue « top », face avant), +y = haut.
+
+export const PALETTE = {
+  background: '#d6d5d0',
+  grass: '#86a854',
+  grassSpeckle: '#729447',
+  earth: '#5e4a3c',
+  water: '#3a90a3',
+  waterSpeckle: '#5aa7b6',
+  sand: '#d3b787',
+  sandLine: '#c0a273',
+  stone: '#c3ae88',
+  stoneDark: '#a8936f',
+  stoneKeep: '#cbb791',
+  mortar: '#8f7d5f',
+  plinth: '#4f463d',
+  slate: '#566670',
+  slateLine: '#434f58',
+  tileRed: '#b05a3f',
+  tileRedLine: '#8a4330',
+  wood: '#a9865a',
+  woodDark: '#6e4e33',
+  woodLine: '#86653f',
+  iron: '#3a3a3f',
+  dark: '#2b2724',
+  flag: '#b64a34',
+  gold: '#b48a3c',
+  carpet: '#8a2e2e',
+  pigeon: '#e8e4dc',
+} as const;
+
+export type Vec2 = readonly [number, number];
+
+export const DIM = {
+  platform: { size: 100, height: 2 },
+  // Douves : rectangle extérieur (demi-côtés) ; l'eau touche directement les murs.
+  moat: { outerHalfX: 46, outerHalfZ: 43, waterY: -0.9 },
+  // Courtine : demi-côtés mesurés sur la face extérieure.
+  wall: {
+    halfX: 34.5,
+    halfZ: 31,
+    thickness: 3,
+    bottom: -1.5,
+    top: 18.5, // chemin de ronde
+    plinthTop: 1.6,
+    parapet: { thickness: 1, lip: 0.8 },
+    merlon: { width: 2, gap: 1.4, height: 2, thickness: 1 },
+  },
+  // Tours rondes d'angle (une par serveur MCP ; les 4 premières occupent les angles).
+  tower: {
+    corners: [
+      { id: 'nw', pos: [-36, -32.5] as Vec2 },
+      { id: 'ne', pos: [36, -32.5] as Vec2 },
+      { id: 'se', pos: [36, 32.5] as Vec2 },
+      { id: 'sw', pos: [-36, 32.5] as Vec2 },
+    ],
+    // Emplacements des tours supplémentaires (au-delà de 4 serveurs), plus petites.
+    extraSlots: [
+      [-20, 31], [20, 31], [-34.5, -18], [34.5, -18], [34.5, 20], [-34.5, 20], [22, -31], [-34.5, -8], [34.5, -8],
+    ] as Vec2[],
+    radius: 6.3,
+    bottom: -1.5,
+    plinthTop: 1.6,
+    shaftTop: 25.8,
+    corbelHeight: 0.8,
+    flareTop: 27.6,
+    crownRadius: 7.8,
+    crownTop: 29.7,
+    crownWall: 1,
+    merlonCount: 14,
+    merlonHeight: 1.8,
+    merlonWidth: 2.2,
+    domeRadius: 6.4,
+    domeHeight: 4.4,
+    finial: { drumRadius: 1.3, drumHeight: 1, ballRadius: 1 },
+    segments: 12,
+    windowHeights: [8, 15.5],
+    extra: { radius: 4.2, scale: 0.78 },
+  },
+  keep: {
+    center: [0, -31] as Vec2,
+    width: 14,
+    depth: 15,
+    bottom: -1.5,
+    plinthTop: 1.6,
+    shaftTop: 49,
+    crownOverhang: 2,
+    crownBase: 50.5,
+    parapetTop: 52.5,
+    parapetThickness: 1,
+    merlon: { width: 1.7, gap: 1.3, height: 2 },
+    flagPole: 10,
+    flag: [3.6, 2.1] as Vec2,
+    rearGate: { width: 5, height: 7 },
+    door: { width: 3.5, height: 6 },
+    awning: { width: 12, depth: 4, y: 20.5, drop: 2 },
+  },
+  gate: {
+    center: [0, 27] as Vec2,
+    size: 12,
+    bottom: -1.5,
+    plinthTop: 1.6,
+    bodyTop: 23,
+    parapetTop: 24,
+    parapetThickness: 1,
+    merlon: { width: 1.6, gap: 1.3, height: 1.6 },
+    roofBase: 24.6,
+    roofSide: 11,
+    roofHeight: 5,
+    arch: { width: 7, height: 10 }, // hauteur totale, sommet en plein cintre
+    portcullisZ: 3.5, // décalage depuis le centre vers l'extérieur
+  },
+  drawbridge: { width: 8, length: 11, thickness: 0.5, hingeY: 0.2 },
+  road: { width: 8 },
+  midTower: {
+    west: { id: 'watchtower', pos: [-30.5, 0] as Vec2 },
+    east: { id: 'mail_post', pos: [30.5, 0] as Vec2 },
+    size: 11,
+    bottom: -1.5,
+    plinthTop: 1.6,
+    bodyTop: 27,
+    parapetTop: 28,
+    parapetThickness: 1,
+    merlon: { width: 1.6, gap: 1.3, height: 1.6 },
+    belvedereTop: 32.5,
+    belvedereInset: 1.6,
+    roofSide: 12.5,
+    roofHeight: 5.5,
+  },
+  armory: { center: [-15, -28] as Vec2, size: 8, bottom: -1.5, bodyTop: 26, parapetTop: 27, belvedereTop: 31, belvedereInset: 1.3, roofSide: 9.6, roofHeight: 5.5 },
+  greatHall: {
+    east: { center: [7.5, -1.5] as Vec2, size: [10, 26] as Vec2, eaves: 17, ridge: 25, ridgeAxis: 'z' as const },
+    west: { center: [-5.5, -9.5] as Vec2, size: [16, 11] as Vec2, eaves: 14, ridge: 21, ridgeAxis: 'x' as const },
+    porch: { center: [7.5, 13.5] as Vec2, size: [6, 4] as Vec2, eaves: 5, ridge: 8, ridgeAxis: 'z' as const },
+    loggia: { depth: 2.6, floorY: 7, railHeight: 1.1, posts: 5 },
+  },
+  treasury: { center: [-28.25, -17] as Vec2, size: [6.5, 13] as Vec2, eaves: 10, ridge: 15, ridgeAxis: 'z' as const },
+  library: { center: [-27.75, 13.5] as Vec2, size: [7.5, 15] as Vec2, eaves: 12, ridge: 18.5, ridgeAxis: 'z' as const },
+  barracks: { center: [27.75, 13.5] as Vec2, size: [7.5, 14.5] as Vec2, eaves: 11, ridge: 17, ridgeAxis: 'z' as const },
+  stables: { center: [24, -24] as Vec2, size: [14, 9] as Vec2, eaves: 7, ridge: 11, ridgeAxis: 'x' as const },
+  quarantinePen: { center: [16, 19] as Vec2, size: [10, 7] as Vec2, postHeight: 2.2, postSpacing: 2.5 },
+  supplyRoad: { width: 5, thickness: 0.6, y: -0.3 },
+  throne: { daisSize: [3.2, 2.6] as Vec2, daisHeight: 0.6 },
+  // Éclairage sans tone mapping : les couleurs de la palette ressortent telles quelles sur les faces éclairées.
+  sun: { position: [35, 100, 55] as const, intensity: 0.45, fill: { position: [-40, 50, -80] as const, intensity: 0.3 }, ambient: 0.5, hemisphere: 0.2 },
+} as const;
+
+export type TowerId = string;

@@ -261,6 +261,10 @@ class Gateway:
                 return await divert()
 
             # Bloc 2 : contrôle des packages. install_package n'est jamais relayé tel quel.
+            if is_install and self._defense and self._defense.package_quarantined(
+                    f"{args.get('ecosystem', '')}:{args.get('name', '')}"):
+                await respond("blocked", {"reason": "quarantined_by_analyst"}, ("system", "confinement"))
+                return {"status": "blocked", "reason": "quarantined_by_analyst"}
             if is_install:
                 control = ("system", "controle_packages")
                 outcome = await guarded(control, lambda: self._packages.review(session, call_id, **args))

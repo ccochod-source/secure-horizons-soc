@@ -126,6 +126,10 @@ class RecordedInstalls:
         self.calls.append((ecosystem, name, version, archive))
         return {"installed": True, "simulated": False}
 
+    async def uninstall(self, ecosystem, name):
+        self.calls.append(("uninstall", name))
+        return {"removed": True, "simulated": False}
+
 
 class Env:
     def __init__(self, tmp_path):
@@ -515,3 +519,82 @@ async def test_gateway_routes_install_package_through_the_review(env):
     request = next(i for i, e in env.events.events
                    if e.event_type == "package_install_requested" and "ghostpkg" in e.resource_id)
     assert review["checks"]["request_event_id"] == str(request) and review["trace_id"] == session.trace_id
+
+
+
+# --- retrait après contre-vérification -----------------------------------------------------------
+
+async def test_removal_uninstalls_and_rejects_an_approved_package(env):
+    review_id = await pending_typosquat(env)
+    await env.reviewer.decide(review_id, "approve", decided_by=ANALYST)
+    assert len(env.store.installed) == 1
+
+    result = await env.reviewer.remove(review_id, decided_by=ANALYST, reason="contre-vérification non positive")
+
+    assert result["state"] == "rejected" and result["inventory_rows_removed"] == 1
+    assert env.installs.calls[-1] == ("uninstall", "reqeusts") and env.store.installed == []
+    review = env.store.reviews[review_id]
+    assert review["state"] == "rejected" and review["execution_result"]["removal"]["removed_by"] == ANALYST
+    removal = env.events.events[-1][1]
+    assert (removal.event_type, removal.action, removal.result, removal.actor_id) == (
+        "package_review", "remove", "success", ANALYST)
+
+
+async def test_a_package_never_approved_cannot_be_removed(env):
+    review_id = await pending_typosquat(env)
+    with pytest.raises(NotPending):
+        await env.reviewer.remove(review_id, decided_by=ANALYST, reason="x")
+
+
+async def test_removal_route_requires_the_confinement_token(env):
+    review_id = await pending_typosquat(env)
+    await env.reviewer.decide(review_id, "approve", decided_by=ANALYST)
+    app = create_app(gateway=Gateway(env.events, env.pseudonymizer, packages=env.reviewer), packages=env.reviewer)
+    app.state.confinement_token = "jeton-confinement"
+    url, body = f"/packages/{review_id}/removal", {"demande_par": ANALYST, "raison": "contre-vérification"}
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        assert (await http.post(url, json=body)).status_code == 401
+        ok = await http.post(url, json=body, headers={"authorization": "Bearer jeton-confinement"})
+        assert ok.status_code == 200 and ok.json()["state"] == "rejected"
+        again = await http.post(url, json=body, headers={"authorization": "Bearer jeton-confinement"})
+        assert again.status_code == 409
+
+
+class FakeBridge:
+    def __init__(self):
+        self.requests = []
+
+    async def request_reverification(self, reviewer, review_id, decided_by):
+        self.requests.append((review_id, decided_by))
+
+
+async def test_human_approval_triggers_the_defenders_reverification(env):
+    approved = await pending_typosquat(env)
+    env.store.analysts[ANALYST] = {"user_id": ANALYST, "can_approve_packages": True}
+    app = create_app(gateway=Gateway(env.events, env.pseudonymizer, packages=env.reviewer), packages=env.reviewer,
+                     analyst_auth=FakeAuth({"good": ANALYST}))
+    app.state.defense = bridge = FakeBridge()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        ok = await http.post(f"/packages/{approved}/decision", json={"decision": "approve"},
+                             headers={"authorization": "Bearer good"})
+        assert ok.status_code == 200
+    assert bridge.requests == [(approved, ANALYST)]
+
+
+async def test_a_package_quarantined_by_an_analyst_is_refused_before_any_review(env, tmp_path):
+    from gateway.defense import DefenseBridge
+    bridge = DefenseBridge(None, None, "http://localhost:8000", "test", tmp_path / "state.sqlite")
+    bridge.quarantine_package("pypi:ghostpkg@1.0", "INC-test", ANALYST)
+    upstream = InProcessUpstream("mcp_demo")
+    upstream.add(lambda ecosystem, name, version=None: {"installed": True}, name="install_package", description="Installe.")
+    gateway = Gateway(env.events, env.pseudonymizer, packages=env.reviewer, defense=bridge)
+    await gateway.register(upstream)
+    session = gateway.open_session("DevBot")
+    await gateway.record_query(session, "installe ghostpkg")
+
+    refused = await gateway.dispatch(session, "install_package", {"ecosystem": "pypi", "name": "GhostPkg"})
+
+    assert refused == {"status": "blocked", "reason": "quarantined_by_analyst"}
+    assert env.store.reviews == {} and env.registry.requests == []

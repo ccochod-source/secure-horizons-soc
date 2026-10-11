@@ -216,3 +216,26 @@ async def test_unreadable_rules_fall_back_to_the_full_analysis(env):
     env.rules.active = broken
     outcome, lookups = await env.fresh_request("pypi", "ghostpkg")
     assert outcome["status"] == "blocked_pending_review" and lookups > 0
+
+
+async def test_switched_off_the_backend_behaves_as_before_and_the_routes_are_closed(env, monkeypatch):
+    from common.config import load_settings
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/db")
+    monkeypatch.delenv("LEARNING_ENABLED", raising=False)
+    assert load_settings().learning_enabled is False  # éteinte tant qu'on ne l'allume pas
+    monkeypatch.setenv("LEARNING_ENABLED", "true")
+    assert load_settings().learning_enabled is True
+
+    reviewer = PackageReviewer(
+        env.store, env.events, env.pseudonymizer, env.client,
+        LocalQuarantine(env.quarantine_dir), env.installs, now=lambda: NOW)
+    env.reviewer = reviewer
+    env.app = create_app(gateway=Gateway(env.events, env.pseudonymizer, packages=reviewer),
+                         packages=reviewer, analyst_auth=FakeAuth({"good": ANALYST}))
+    async with env.http() as http:
+        decided = await env.decide(http, await env.request("pypi", "ghostpkg"), decision="reject")
+        assert "rule_proposals" not in decided and env.rules.rules == []
+        assert (await http.get("/rules/proposals", headers=GOOD)).status_code == 503
+        assert (await http.post("/rules/package/1/apply", headers=GOOD)).status_code == 503
+        assert (await http.post(f"/alerts/{uuid4()}/verdict", json={"verdict": "confirmed"},
+                                headers=GOOD)).status_code == 503

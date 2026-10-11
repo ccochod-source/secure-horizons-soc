@@ -55,7 +55,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         pseudonymizer = Pseudonymizer(PostgresTokenStore(db), Scanner(names), gitguardian)
         events = PostgresEventStore(db)
         review_store = PostgresReviewStore(db)
-        learning = PackageLearning(PostgresRuleStore(db), review_store)
+        # LEARNING_ENABLED absent ou faux : aucune règle apprise n'est lue ni proposée.
+        learning = (PackageLearning(PostgresRuleStore(db), review_store)
+                    if settings.learning_enabled else None)
         packages = PackageReviewer(
             review_store, events, pseudonymizer, http,
             LocalQuarantine(settings.package_quarantine_dir),
@@ -63,12 +65,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             learning=learning,
         )
         decoy_store = PostgresDecoyStore(db)
-        decoy_learning = DecoyLearning(PostgresRuleStore(db, "decoy_rules"), decoy_store)
+        decoy_learning = (DecoyLearning(PostgresRuleStore(db, "decoy_rules"), decoy_store)
+                          if settings.learning_enabled else None)
         if settings.decoys_seed_on_start:
             try:
                 report = await Seeder(
                     decoy_store, gitguardian_api_key=settings.gitguardian_api_key, client=http,
-                    rules=decoy_learning.rules).seed()
+                    rules=decoy_learning.rules if decoy_learning else None).seed()
                 logger.info("leurres : %d planté(s), %d déjà en place, %d ignoré(s)",
                             len(report.planted), len(report.existing), len(report.skipped))
             except Exception:
@@ -100,6 +103,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             upstreams.append(upstream)
             await gateway.register(upstream)
         app.state.db = db
+        app.state.company, app.state.openai = company, openai
         app.state.gateway = gateway
         app.state.gateway_token = settings.gateway_token
         app.state.packages = packages
@@ -113,6 +117,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         logger.info("passerelle prête : %d nom(s) dans l'annuaire, GitGuardian %s",
                     len(names), "actif" if gitguardian else "absent")
+        logger.info("boucle d'amélioration %s", "active" if learning else "éteinte (LEARNING_ENABLED)")
         yield
     finally:
         for upstream in reversed(upstreams):

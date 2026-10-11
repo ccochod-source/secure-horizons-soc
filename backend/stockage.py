@@ -84,6 +84,15 @@ if DATABASE_URL:
             maj_le TIMESTAMPTZ NOT NULL DEFAULT now())""")
         # Ceinture et bretelles : même si quelqu'un expose ce schéma, aucune lecture via l'API publique.
         _c.execute(f"ALTER TABLE {SCHEMA}.incidents ENABLE ROW LEVEL SECURITY")
+        _c.execute(f"""CREATE TABLE IF NOT EXISTS {SCHEMA}.contre_verifications (
+            numero BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id TEXT UNIQUE,
+            review_id TEXT,
+            statut TEXT,
+            contenu JSONB,
+            confirmation_prise BOOLEAN NOT NULL DEFAULT FALSE,
+            cree_le TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        _c.execute(f"ALTER TABLE {SCHEMA}.contre_verifications ENABLE ROW LEVEL SECURITY")
 
     def _sql(requete: str, parametres: tuple = ()):
         with _pool.connection() as c:
@@ -117,10 +126,17 @@ else:
         id TEXT UNIQUE,
         contenu TEXT,
         decision_prise INTEGER NOT NULL DEFAULT 0)""")
+    _connexion.execute("""CREATE TABLE IF NOT EXISTS contre_verifications (
+        numero INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT UNIQUE,
+        review_id TEXT,
+        statut TEXT,
+        contenu TEXT,
+        confirmation_prise INTEGER NOT NULL DEFAULT 0)""")
     _connexion.commit()
 
     def _sql(requete: str, parametres: tuple = ()):
-        requete = requete.replace(f"{SCHEMA}.incidents", "incidents_v2")
+        requete = requete.replace(f"{SCHEMA}.incidents", "incidents_v2").replace(f"{SCHEMA}.contre_verifications", "contre_verifications")
         with _verrou:
             curseur = _connexion.execute(requete, parametres)
             resultat = curseur.fetchall() if curseur.description else None
@@ -172,3 +188,56 @@ def prendre_decision(incident_id: str) -> bool:
 def rendre_decision(incident_id: str) -> None:
     """Annule la prise de décision si son application a planté, pour pouvoir recliquer."""
     _sql(f"UPDATE {SCHEMA}.incidents SET decision_prise = {_FAUX} WHERE id = ?", (incident_id,))
+
+
+# ---------------------------------------------------------------------- contre-vérifications des packages
+# Une ligne par package approuvé par un analyste : deuxième vérification des agents, puis confirmation humaine.
+def creer_contre_verification(cv: dict) -> dict:
+    """Enregistre une contre-vérification et lui donne un numéro lisible (CV-0001...)."""
+    if DATABASE_URL:
+        (numero,) = _sql(f"INSERT INTO {SCHEMA}.contre_verifications (review_id, statut, contenu) "
+                         f"VALUES (?, ?, ?::jsonb) RETURNING numero",
+                         (cv["review_id"], cv["statut"], json.dumps(cv, ensure_ascii=False))).fetchone()
+    else:
+        with _verrou:
+            numero = _connexion.execute("INSERT INTO contre_verifications (review_id, statut, contenu) VALUES (?, ?, ?)",
+                                        (cv["review_id"], cv["statut"], json.dumps(cv, ensure_ascii=False))).lastrowid
+            _connexion.commit()
+    cv = {**cv, "id": f"CV-{numero:04d}"}
+    enregistrer_contre_verification(cv)
+    return cv
+
+
+def enregistrer_contre_verification(cv: dict) -> None:
+    contenu = json.dumps(cv, ensure_ascii=False)
+    if DATABASE_URL:
+        _sql(f"UPDATE {SCHEMA}.contre_verifications SET id = ?, statut = ?, contenu = ?::jsonb "
+             f"WHERE id = ? OR (id IS NULL AND review_id = ?)", (cv["id"], cv["statut"], contenu, cv["id"], cv["review_id"]))
+    else:
+        _sql(f"UPDATE {SCHEMA}.contre_verifications SET id = ?, statut = ?, contenu = ? "
+             f"WHERE id = ? OR (id IS NULL AND review_id = ?)", (cv["id"], cv["statut"], contenu, cv["id"], cv["review_id"]))
+
+
+def lire_contre_verification(cv_id: str) -> dict | None:
+    ligne = _sql(f"SELECT contenu FROM {SCHEMA}.contre_verifications WHERE id = ?", (cv_id,)).fetchone()
+    return _lire_contenu(ligne) if ligne else None
+
+
+def lister_contre_verifications(review_id: str | None = None) -> list[dict]:
+    if review_id:
+        lignes = _sql(f"SELECT contenu FROM {SCHEMA}.contre_verifications WHERE review_id = ? ORDER BY numero DESC",
+                      (review_id,)).fetchall()
+    else:
+        lignes = _sql(f"SELECT contenu FROM {SCHEMA}.contre_verifications ORDER BY numero DESC").fetchall()
+    return [_lire_contenu(l) for l in lignes]
+
+
+def prendre_confirmation(cv_id: str) -> bool:
+    """Vrai pour la première réponse de l'analyste seulement (deux clics simultanés : un seul passe)."""
+    return _sql(f"UPDATE {SCHEMA}.contre_verifications SET confirmation_prise = {_VRAI} "
+                f"WHERE id = ? AND confirmation_prise = {_FAUX}", (cv_id,)).rowcount == 1
+
+
+def rendre_confirmation(cv_id: str) -> None:
+    """Rouvre la confirmation si son application a échoué (passerelle injoignable)."""
+    _sql(f"UPDATE {SCHEMA}.contre_verifications SET confirmation_prise = {_FAUX} WHERE id = ?", (cv_id,))

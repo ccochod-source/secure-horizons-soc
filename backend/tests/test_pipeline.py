@@ -220,3 +220,117 @@ def test_jetons_obligatoires_quand_configures(monkeypatch):
                        headers={"Authorization": "Bearer jeton-passerelle"}).status_code == 401
     assert client.post(url, json={"decision": "approved"},
                        headers={"Authorization": "Bearer jeton-analyste"}).status_code == 200
+
+
+# 7. Contrôle des packages : les agents défenseurs enquêtent sur une installation refusée -------------
+# Lots réels : sessions de la passerelle exportées depuis Supabase (voir le champ « _source »).
+PACKAGE_SUSPECT = json.load(open(os.path.join(ICI, "exemple_package_suspect.json"), encoding="utf-8"))
+PACKAGE_SAIN = json.load(open(os.path.join(ICI, "exemple_package_sain.json"), encoding="utf-8"))
+
+
+def lot(source: dict) -> dict:
+    return {"agent_id": source["agent_id"], "events": source["events"]}
+
+
+def etat_package(**enquete) -> dict:
+    events = pipeline.preparer_evenements(PACKAGE_SUSPECT["events"])
+    etat = {"agent_id": "DevBot", "events": events}
+    etat.update(pipeline.regle(etat))
+    base = {"title": "t", "description": "d", "severity": "Élevée", "conclusions": [],
+            "action": "suspendre_outil", "cible": "install_package", "impact": "i"}
+    etat["enquete"] = {**base, **enquete}
+    return etat
+
+
+def test_package_refuse_declenche_la_regle():
+    etat = {"agent_id": "DevBot", "events": pipeline.preparer_evenements(PACKAGE_SUSPECT["events"])}
+    alerte = pipeline.regle(etat)["alerte"]
+    assert alerte["motif"] == "installation d'un package bloquée par la passerelle"
+    demande, refus = (next(e for e in etat["events"] if e["id"] == i) for i in alerte["evenements"])
+    assert demande["type"] == "package_install_requested" and refus["type"] == "tool_response"
+
+
+def test_package_sain_installe_ne_declenche_rien():
+    reponse = client.post("/events", json=lot(PACKAGE_SAIN))
+    assert reponse.status_code == 200
+    assert reponse.json()["incident"] is None
+
+
+def test_package_refuse_cree_un_incident_avec_enquete_verifiee():
+    incident = creer_incident(lot(PACKAGE_SUSPECT))
+    assert incident["status"] == "À examiner"
+    assert incident["confidence"] == 1.0
+    assert all(c["verifiee"] for c in incident["conclusions"])
+    assert incident["action"] == {"type": "suspendre_outil", "cible": "install_package", "origine": "enqueteur", "correction": ""}
+
+
+def test_conclusion_package_suspect_sans_le_refus_est_rejetee():
+    demande = next(e["id"] for e in PACKAGE_SUSPECT["events"] if e["type"] == "package_install_requested")
+    etat = etat_package(conclusions=[{"type": "package_suspect", "affirmation": "x", "evidence_ids": [demande]}])
+    resultat = pipeline.verificateur(etat)
+    assert not resultat["conclusions"][0]["verifiee"]
+    assert resultat["confiance"] == 0
+
+
+def test_conclusion_package_suspect_complete_est_acceptee():
+    etat = etat_package()
+    etat["enquete"]["conclusions"] = [{"type": "package_suspect", "affirmation": "x", "evidence_ids": etat["alerte"]["evenements"]}]
+    resultat = pipeline.verificateur(etat)
+    assert resultat["conclusions"][0]["verifiee"] and resultat["confiance"] == 1.0
+
+
+def test_cible_inventee_pour_un_package_remplacee_par_l_outil_d_installation():
+    etat = etat_package(cible="pip-inexistant")
+    action = pipeline.verificateur(etat)["action"]
+    assert action["origine"] == "regle" and action["cible"] == "install_package"
+
+
+def test_installation_en_attente_compte_comme_un_blocage():
+    """Cas réel : l'enquêteur cite la réponse « blocked_pending_review » de la passerelle comme un blocage."""
+    etat = etat_package()
+    refus = etat["alerte"]["evenements"][1]
+    etat["enquete"]["conclusions"] = [
+        {"type": "package_suspect", "affirmation": "x", "evidence_ids": etat["alerte"]["evenements"]},
+        {"type": "blocage", "affirmation": "L'installation a été suspendue en attente d'un analyste.", "evidence_ids": [refus]}]
+    resultat = pipeline.verificateur(etat)
+    assert all(c["verifiee"] for c in resultat["conclusions"]) and resultat["confiance"] == 1.0
+
+
+def test_blocage_cite_sur_la_demande_seule_reste_rejete():
+    demande = next(e["id"] for e in PACKAGE_SUSPECT["events"] if e["type"] == "package_install_requested")
+    etat = etat_package(conclusions=[{"type": "blocage", "affirmation": "x", "evidence_ids": [demande]}])
+    assert not pipeline.verificateur(etat)["conclusions"][0]["verifiee"]
+
+
+# 8. Couche de leurres : un accès à un leurre ouvre une enquête ---------------------------------------
+LEURRE = json.load(open(os.path.join(ICI, "exemple_leurre.json"), encoding="utf-8"))
+
+
+def test_acces_a_un_leurre_declenche_la_regle():
+    etat = {"agent_id": "DevBot", "events": pipeline.preparer_evenements(LEURRE["events"])}
+    alerte = pipeline.regle(etat)["alerte"]
+    assert alerte["motif"].startswith("accès à un leurre")
+    appel, leurre = (next(e for e in etat["events"] if e["id"] == i) for i in alerte["evenements"])
+    assert appel["type"] == "tool_call" and leurre["type"] == "decoy_access"
+
+
+def test_acces_a_un_leurre_cree_un_incident_verifie():
+    incident = creer_incident(lot(LEURRE))
+    assert incident["severity"] == "Critique" and incident["confidence"] == 1.0
+    assert incident["conclusions"][0]["type"] == "acces_leurre" and incident["conclusions"][0]["verifiee"]
+    assert incident["action"]["cible"] == "search_docs"
+
+
+def test_conclusion_acces_leurre_sans_l_acces_est_rejetee():
+    events = pipeline.preparer_evenements(LEURRE["events"])
+    etat = {"agent_id": "DevBot", "events": events}
+    etat.update(pipeline.regle(etat))
+    appel = etat["alerte"]["evenements"][0]
+    etat["enquete"] = {"title": "t", "description": "d", "severity": "Critique", "action": "suspendre_outil",
+                       "cible": "search_docs", "impact": "i",
+                       "conclusions": [{"type": "acces_leurre", "affirmation": "x", "evidence_ids": [appel]}]}
+    assert not pipeline.verificateur(etat)["conclusions"][0]["verifiee"]
+
+
+def test_conversation_normale_ne_declenche_pas_la_regle_des_leurres():
+    assert client.post("/events", json=NORMAL).json()["incident"] is None

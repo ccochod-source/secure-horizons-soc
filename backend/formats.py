@@ -28,7 +28,8 @@ class LotEvenements(BaseModel):
     events: list[TraceEvent]
 
 
-TypeConclusion = Literal["instruction_suspecte", "lecture_sensible", "sortie_externe", "propagation", "blocage"]
+TypeConclusion = Literal["instruction_suspecte", "lecture_sensible", "sortie_externe", "propagation", "package_suspect",
+                         "acces_leurre", "blocage"]
 Statut = Literal["À examiner", "En enquête", "Approuvé, en attente d'exécution", "Confiné", "Surveillance"]
 
 

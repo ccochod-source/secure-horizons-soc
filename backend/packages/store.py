@@ -51,6 +51,10 @@ class ReviewStore(Protocol):
 
     async def record_install(self, agent: str, dependency: str, attributes: dict[str, Any]) -> None: ...
 
+    async def remove_install(self, dependency: str) -> int:
+        """Retire une dépendance de l'inventaire (ses droits d'accès partent en cascade). Rend le nombre retiré."""
+        ...
+
     async def analyst(self, user_id: str) -> dict[str, Any] | None: ...
 
 
@@ -127,6 +131,12 @@ class PostgresReviewStore:
                 "where a.kind = 'agent' and a.name = %s and not exists ("
                 "  select 1 from public.inventory_access x where x.subject_id = a.id and x.object_id = %s)",
                 (row["id"], INVENTORY_SOURCE, agent, row["id"]))
+
+    async def remove_install(self, dependency: str) -> int:
+        async with self._db.as_owner() as conn:
+            cur = await conn.execute(
+                "delete from public.inventory where kind = 'dependency' and name = %s", (dependency,))
+            return cur.rowcount
 
     async def analyst(self, user_id: str) -> dict[str, Any] | None:
         async with self._db.as_owner() as conn:
@@ -209,6 +219,11 @@ class MemoryReviewStore:
 
     async def record_install(self, agent: str, dependency: str, attributes: dict[str, Any]) -> None:
         self.installed.append({"agent": agent, "dependency": dependency, "attributes": attributes})
+
+    async def remove_install(self, dependency: str) -> int:
+        before = len(self.installed)
+        self.installed = [i for i in self.installed if i["dependency"] != dependency]
+        return before - len(self.installed)
 
     async def analyst(self, user_id: str) -> dict[str, Any] | None:
         return self.analysts.get(user_id)

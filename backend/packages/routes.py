@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from common.rules import RuleStore
@@ -82,9 +82,16 @@ async def _analyst(request: Request) -> str:
 router = APIRouter()
 
 
+async def _contre_verification(request: Request, review_id: UUID, analyst: str) -> None:
+    bridge = getattr(request.app.state, "defense", None)
+    if bridge is not None:
+        await bridge.request_reverification(request.app.state.packages, review_id, analyst)
+
+
 @router.post("/packages/{review_id}/decision")
 async def decide(
-    review_id: UUID, body: DecisionIn, request: Request, analyst: str = Depends(_analyst)
+    review_id: UUID, body: DecisionIn, request: Request, background: BackgroundTasks,
+    analyst: str = Depends(_analyst),
 ) -> dict[str, Any]:
     reviewer: PackageReviewer = request.app.state.packages
     try:
@@ -99,7 +106,9 @@ async def decide(
         raise HTTPException(status_code=409, detail="Ce package n'attend plus de décision.") from None
     except ReplacementRefused as exc:
         raise HTTPException(status_code=422, detail=f"Remplacement refusé : {exc}") from None
-
+    # Même approuvé par un humain, le package est revérifié par les agents si l'enquête initiale était peu fiable.
+    if body.decision == "approve":
+        background.add_task(_contre_verification, request, review_id, analyst)
     # La décision est enregistrée : on en tire des propositions, qui ne changent rien
     # tant qu'un analyste ne les applique pas. Un échec ici n'annule pas la décision.
     learning: PackageLearning | None = getattr(request.app.state, "learning", None)
@@ -123,7 +132,7 @@ def _learning(request: Request) -> PackageLearning:
 
 def _rule(rule: dict[str, Any], rule_list: str = "package") -> dict[str, Any]:
     return {**rule, "list": rule_list,
-            "source_decision_id": str(rule["source_decision_id"]),
+            "source_decision_id": str(rule["source_decision_id"]) if rule["source_decision_id"] else None,
             "decided_by": str(rule["decided_by"]) if rule["decided_by"] else None}
 
 
