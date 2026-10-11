@@ -15,6 +15,45 @@ type LaunchResult = {
 type Slot = { loading: boolean; result?: LaunchResult; verdict?: string };
 const GROUP_ICON = { Connaissances: FileWarning, Packages: PackageX, Agent: Bug } as const;
 
+type Step = { who: string; text: string; tone?: 'danger' | 'success' | 'info' | 'muted' };
+
+/** Raconte, étape par étape, ce qui se passe réellement pendant l'attaque, à partir du résultat réel. */
+function narrate(a: Attack, res: LaunchResult, queue: PendingQueue | null): Step[] {
+  const steps: Step[] = [{ who: 'Attaquant', text: a.desc, tone: 'muted' }];
+  if (res.kind === 'document') {
+    steps.push({ who: 'Passerelle', text: `Le document « ${res.title ?? a.title} » est déposé dans la base de connaissances.` });
+    steps.push({ who: 'Admission des connaissances', text: 'Avant toute lecture par l’agent, j’analyse le contenu : règles de sécurité d’abord, puis l’IA, en traitant le document comme une simple donnée (jamais une consigne).' });
+    const doc = queue?.documents.find((d) => d.id === res.docId);
+    if (doc?.status === 'quarantined') steps.push({ who: 'Verdict', text: `Mis en quarantaine. Motif : ${doc.reason ?? 'contenu suspect'}. L’agent ne pourra pas le lire.`, tone: 'danger' });
+    else if (doc?.status === 'pending' || (res.status === 'pending' && !doc)) steps.push({ who: 'Verdict', text: 'Analyse en cours… (rafraîchissez dans un instant).', tone: 'info' });
+    else if (res.docId && !doc) steps.push({ who: 'Verdict', text: 'Admis : aucune menace détectée, le document devient consultable par l’agent.', tone: 'success' });
+    steps.push({ who: 'Décision humaine', text: 'Un analyste peut confirmer la quarantaine (refuser) ou lever le doute (approuver).' });
+  } else if (res.kind === 'package') {
+    steps.push({ who: 'Agent développeur', text: `J’installe le package « ${a.name} »${a.version ? ` (version ${a.version})` : ''}.` });
+    steps.push({ who: 'Passerelle', text: 'install_package n’est jamais relayé tel quel à l’écosystème : j’intercepte la demande.' });
+    steps.push({ who: 'Contrôle des packages', text: `Je vérifie le nom et la version sur ${a.ecosystem === 'npm' ? 'npm' : 'PyPI'} et la base de vulnérabilités OSV.` });
+    const pkg = queue?.packages.find((p) => p.id === res.reviewId);
+    const verdict = `${res.status === 'blocked_pending_review' ? 'Bloqué' : res.status ?? 'traité'}.${pkg?.recommendation ? ` ${pkg.recommendation}` : ''}${pkg?.risk ? ` (risque : ${pkg.risk})` : ''}`;
+    steps.push({ who: 'Verdict', text: verdict, tone: res.status === 'blocked_pending_review' ? 'danger' : 'info' });
+    steps.push({ who: 'Passerelle', text: 'Le package n’a jamais été exécuté : seulement téléchargé en quarantaine pour analyse statique.', tone: 'muted' });
+    steps.push({ who: 'Décision humaine', text: 'Un analyste décide de l’approuver ou de le refuser définitivement.' });
+  } else {
+    steps.push({ who: 'Vous', text: a.question ?? '' });
+    steps.push({ who: 'Passerelle', text: 'Je trace la session, je masque les secrets du coffre et je surveille la couche de leurres.' });
+    if (res.defenses?.decoy) steps.push({ who: 'Couche de leurres', text: 'Un leurre a été touché : la session est traitée comme compromise.', tone: 'danger' });
+    if (res.diverted || res.defenses?.sandbox) steps.push({ who: 'Bac à sable', text: 'La session est confinée : elle ne touche plus rien de réel.', tone: 'danger' });
+    if (res.defenses?.packageBlocked) steps.push({ who: 'Contrôle des packages', text: 'Un package demandé pendant la conversation a été bloqué.', tone: 'danger' });
+    if (res.defenses?.outboundBlocked) steps.push({ who: 'Passerelle', text: 'Un envoi vers l’extérieur a été bloqué.', tone: 'danger' });
+    if (res.defenses?.secretsMasked) steps.push({ who: 'Coffre', text: `${res.defenses.secretsMasked} secret(s) masqué(s) avant tout envoi au modèle.`, tone: 'info' });
+    if (res.answer) steps.push({ who: 'Agent', text: res.answer });
+    const clean = !res.defenses?.decoy && !res.diverted && !res.defenses?.packageBlocked && !res.defenses?.outboundBlocked && !res.defenses?.secretsMasked;
+    if (clean && res.answer) steps.push({ who: 'Passerelle', text: 'Requête légitime : aucune défense n’a eu à se déclencher.', tone: 'success' });
+    if (res.incidentId) steps.push({ who: 'Agents défenseurs', text: `Incident ${res.incidentId} ouvert : enquête puis mesure proposée à un analyste.`, tone: 'info' });
+  }
+  return steps;
+}
+const STEP_COLOR: Record<string, string> = { danger: 'var(--danger)', success: 'var(--success)', info: 'var(--brand-500)', muted: 'var(--text-2, #8a8a99)' };
+
 export function Arsenal() {
   const [queue, setQueue] = useState<PendingQueue | null>(null);
   const [queueErr, setQueueErr] = useState('');
@@ -158,17 +197,14 @@ export function Arsenal() {
                                 {res.error ? <p className="body-sm" style={{ color: 'var(--danger)' }}>{res.error}</p> : (
                                   <>
                                     <p className="body-sm">{res.message}</p>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                                      {res.status && <span className="chip">statut : {res.status}</span>}
-                                      {res.risk && <span className="chip warning">risque : {res.risk}</span>}
-                                      {res.incidentId && <span className="chip info">incident {res.incidentId}</span>}
-                                      {res.diverted && <span className="chip danger">session confinée</span>}
-                                      {res.defenses?.decoy && <span className="chip danger">leurre déclenché</span>}
-                                      {res.defenses?.packageBlocked && <span className="chip danger">package bloqué</span>}
-                                      {res.defenses?.outboundBlocked && <span className="chip danger">envoi externe bloqué</span>}
-                                      {!!res.defenses?.secretsMasked && <span className="chip"><Lock size={11} /> {res.defenses.secretsMasked} secret(s) masqué(s)</span>}
+                                    <div style={{ marginTop: 8, display: 'grid', gap: 7 }}>
+                                      {narrate(a, res, queue).map((s, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                                          <span style={{ flexShrink: 0, minWidth: 132, fontSize: 11, fontWeight: 600, color: STEP_COLOR[s.tone ?? ''] ?? 'var(--text)' }}>{s.who}</span>
+                                          <span className="body-sm" style={{ whiteSpace: 'pre-wrap' }}>{s.who === 'Agent' && s.text.length > 320 ? `${s.text.slice(0, 320)}…` : s.text}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                    {res.answer && <p className="caption faint" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>Réponse de l’agent : {res.answer.slice(0, 280)}{res.answer.length > 280 ? '…' : ''}</p>}
                                     {slot?.verdict ? (
                                       <p className="caption" style={{ marginTop: 8, color: 'var(--success)' }}><Check size={12} /> Décision prise : {slot.verdict}</p>
                                     ) : (res.reviewId || res.docId || res.incidentId) ? (
