@@ -2,7 +2,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Castle, LayoutDashboard, Search, Terminal, ShieldCheck, Lock, Timer, UserCheck, Gauge, PackageX, ArrowUpRight, SlidersHorizontal, ExternalLink } from 'lucide-react';
+import { Bell, Castle, LayoutDashboard, Search, Terminal, ShieldCheck, Lock, Timer, UserCheck, Gauge, PackageX, ArrowUpRight, SlidersHorizontal, ExternalLink, Swords } from 'lucide-react';
 import type { DashboardData } from '@/app/api/dashboard/route';
 import { BarsChart, Donut, ScoreBar, Spark } from './charts';
 import { AgentChat } from './chat';
@@ -75,6 +75,7 @@ export function Dashboard() {
           <Link href="/" className="ds-nav active"><LayoutDashboard size={20} strokeWidth={1.75} /><span>Tableau de bord</span></Link>
           <Link href="/castle" className="ds-nav"><Castle size={20} strokeWidth={1.75} /><span>Château</span>{k && k.pendingDecisions > 0 && <span className="ds-count">{k.pendingDecisions}</span>}</Link>
           <div className="overline" style={{ padding: '14px 14px 6px' }}>Outils</div>
+          <Link href="/arsenal" className="ds-nav"><Swords size={20} strokeWidth={1.75} /><span>Arsenal</span>{k && k.pendingDecisions > 0 && <span className="ds-count">{k.pendingDecisions}</span>}</Link>
           <Link href="/console" className="ds-nav"><Terminal size={20} strokeWidth={1.75} /><span>Console SOC</span></Link>
           <div style={{ marginTop: 'auto', padding: '0 14px 56px' }} className="caption faint">
             <span className="dot" style={{ background: data?.health.gateway ? 'var(--success)' : 'var(--danger)', marginRight: 6 }} />passerelle

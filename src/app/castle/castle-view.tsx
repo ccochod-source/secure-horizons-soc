@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Swords } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CastleAnimator } from '@/castle/animation/animator';
@@ -321,7 +321,7 @@ export function CastleView() {
       <CastleScene source={source} towerIds={towerIds} onAnimator={onAnimator} />
 
       <aside className="ds-panel left">
-        <Link href="/" className="btn btn-sm" aria-label="Retour au tableau de bord" style={{ justifySelf: 'start' }}><ArrowLeft size={16} strokeWidth={1.75} /> Tableau de bord</Link>
+        <div style={{ display: "flex", gap: 8, justifySelf: "start" }}><Link href="/" className="btn btn-sm" aria-label="Retour au tableau de bord"><ArrowLeft size={16} strokeWidth={1.75} /> Tableau de bord</Link><Link href="/arsenal" className="btn btn-sm" aria-label="Arsenal et centre de decision"><Swords size={15} strokeWidth={1.75} /> Arsenal</Link></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <strong className="h2" style={{ fontSize: 20 }}>Château</strong>
           <span style={{ fontSize: 11, color: 'var(--text-2)' }}>

@@ -230,6 +230,7 @@ export function SocConsole() {
     <header className="topbar">
       <div className="brand">
         <Link href="/" className="btn btn-sm" aria-label="Retour au tableau de bord">&larr; Tableau de bord</Link>
+        <Link href="/arsenal" className="btn btn-sm" aria-label="Arsenal et centre de décision">⚔ Arsenal</Link>
         <span className="brand-mark" aria-hidden="true">T</span><strong>TRACE</strong><span className="version">Console SOC</span>
       </div>
       <span className="team-label">Secure Horizons · Équipe SOC</span>
