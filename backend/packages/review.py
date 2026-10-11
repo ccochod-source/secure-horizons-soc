@@ -343,6 +343,40 @@ class PackageReviewer:
                 "replacement_state": "executed" if outcome.get("installed") else "failed",
                 "execution_result": outcome}
 
+    # --- retrait après contre-vérification -----------------------------------
+
+    async def remove(self, review_id: UUID, *, decided_by: str, reason: str) -> dict[str, Any]:
+        """Retire un package approuvé : désinstallation chez l'agent, suppression de l'inventaire, revue rejetée.
+        Seul chemin par lequel une approbation humaine est annulée ; demandé par le backend de défense après
+        une contre-vérification non positive confirmée par l'analyste qui avait approuvé."""
+        review = await self._store.get_review(review_id)
+        if review is None:
+            raise UnknownReview(str(review_id))
+        if review["state"] not in ("executed", "failed", "approved"):
+            raise NotPending(review["state"])
+        ecosystem, name = review["registry"], review["package_name"]
+        reference = _reference(ecosystem, name, review["version"])
+        uninstalled: dict[str, Any] = {"removed": False, "note": "rien n'était installé"}
+        if review["state"] == "executed":
+            try:
+                uninstalled = await self._installer.uninstall(ecosystem, name)
+            except InstallError as exc:
+                uninstalled = {"removed": False, "error": str(exc)}
+        removed_rows = await self._store.remove_install(reference)
+        result = {"removed_at": self._now().isoformat(), "removed_by": decided_by, "reason": reason,
+                  "uninstall": uninstalled, "inventory_rows_removed": removed_rows,
+                  "previous_state": review["state"]}
+        await self._store.update_review(
+            review_id, state="rejected", decision_note=f"Retiré : {reason}",
+            execution_result={**(review.get("execution_result") or {}), "removal": result})
+        if review.get("trace_id") is not None:
+            await self._trace(
+                review["trace_id"], review.get("run_id"), _request_event(review), event_type="package_review",
+                actor_type="user", actor_id=decided_by, action="remove", result="success", resource_id=reference,
+                content={"decision": "remove", "package": reference, "reason": reason, **result},
+                metadata={"review_id": str(review_id)})
+        return {"review_id": str(review_id), "state": "rejected", "package": reference, **result}
+
     # --- installation et traces ---------------------------------------------
 
     async def _install(

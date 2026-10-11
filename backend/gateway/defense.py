@@ -46,6 +46,8 @@ class DefenseBridge:
         with self.connect() as c:
             c.execute('create table if not exists deliveries (trace_id text primary key, state text, response text)')
             c.execute('create table if not exists suspensions (agent_id text, tool text, incident_id text, approved_by text, primary key(agent_id,tool))')
+            c.execute('create table if not exists quarantined_packages (package text primary key, incident_id text, approved_by text)')
+            c.execute('create table if not exists quarantined_documents (document_id text primary key, title text, previous_status text, incident_id text, approved_by text)')
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=10)
@@ -59,6 +61,56 @@ class DefenseBridge:
             c.execute('insert or replace into suspensions values (?,?,?,?)',(agent,tool,incident,approved_by))
         if not self.suspended(agent,tool):
             raise RuntimeError('Suspension non confirmée')
+
+    @staticmethod
+    def package_key(reference):
+        """« pypi:Name@1.0 » -> « pypi:name » : la quarantaine vaut pour toutes les versions."""
+        return reference.split('@', 1)[0].strip().lower() if ':' in reference[1:] else reference.strip().lower()
+
+    def quarantine_package(self, reference, incident, approved_by):
+        key = self.package_key(reference)
+        with self.connect() as c:
+            c.execute('insert or replace into quarantined_packages values (?,?,?)', (key, incident, approved_by))
+        if not self.package_quarantined(key):
+            raise RuntimeError('Quarantaine non confirmée')
+        return key
+
+    def package_quarantined(self, reference):
+        with self.connect() as c:
+            return c.execute('select 1 from quarantined_packages where package=?', (self.package_key(reference),)).fetchone() is not None
+
+    async def quarantine_document(self, document_id, incident, approved_by):
+        """Passe un document en « quarantined » : la recherche de l'agent ne le rend plus. None si inconnu."""
+        async with self.db.as_owner() as conn:
+            row = await (await conn.execute(
+                "select title, review_status from public.documents where id=%s", (document_id,))).fetchone()
+            if row is None:
+                return None
+            await conn.execute(
+                "update public.documents set review_status='quarantined', review_reason=%s, reviewed_at=now() where id=%s",
+                (f"Quarantaine après l'incident {incident}, approuvée par {approved_by}", document_id))
+        previous = row['review_status'] if row['review_status'] != 'quarantined' else 'pending'
+        with self.connect() as c:
+            c.execute('insert or replace into quarantined_documents values (?,?,?,?,?)',
+                      (str(document_id), row['title'], previous, incident, approved_by))
+        return row['title']
+
+    def quarantined_documents(self):
+        with self.connect() as c:
+            return [dict(zip(('document_id', 'title', 'previous_status', 'incident_id', 'approved_by'), r))
+                    for r in c.execute('select * from quarantined_documents').fetchall()]
+
+    async def release_document(self, document_id):
+        with self.connect() as c:
+            row = c.execute('select previous_status from quarantined_documents where document_id=?', (str(document_id),)).fetchone()
+        if row is None:
+            return False
+        async with self.db.as_owner() as conn:
+            await conn.execute("update public.documents set review_status=%s, review_reason=null, reviewed_at=now() where id=%s",
+                               (row[0], document_id))
+        with self.connect() as c:
+            c.execute('delete from quarantined_documents where document_id=?', (str(document_id),))
+        return True
 
     async def complete(self, session):
         trace = str(session.trace_id)
@@ -82,3 +134,25 @@ class DefenseBridge:
             return {'status':'delivered', **result}
         except Exception:
             return {'status':'uncertain'}
+
+    async def request_reverification(self, reviewer, review_id, decided_by):
+        """Un analyste vient d'approuver un package : le backend de défense décide s'il faut une deuxième
+        vérification (enquête initiale < 85 %) et, si elle n'est pas positive, demande confirmation à l'analyste."""
+        review = await reviewer.store.get_review(review_id)
+        if review is None:
+            return {'status': 'unknown_review'}
+        checks = review.get('checks') or {}
+        payload = {
+            'review_id': str(review_id), 'registre': review['registry'], 'nom': review['package_name'],
+            'version': review.get('version') or '', 'approuve_par': decided_by,
+            'etat_installation': review['state'], 'score': checks.get('score'),
+            'signaux': [{'code': s.get('code', ''), 'explication': s.get('explanation', ''), 'bloquant': bool(s.get('blocking'))}
+                        for s in checks.get('signals', [])],
+            'request_event_id': checks.get('request_event_id'),
+        }
+        try:
+            response = await self.http.post(self.url + '/packages/contre-verification', json=payload, timeout=120,
+                                            headers={'Authorization': 'Bearer ' + self.token})
+        except Exception:
+            return {'status': 'uncertain'}
+        return response.json() if response.status_code == 200 else {'status': 'uncertain', 'http': response.status_code}

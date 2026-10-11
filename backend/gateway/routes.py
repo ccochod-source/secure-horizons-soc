@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 from typing import Any
 from uuid import UUID
 
@@ -125,6 +126,15 @@ class ConfinementIn(BaseModel):
     approuve_par: str = Field(min_length=1, max_length=100)
 
 
+_PACKAGE_REF = re.compile(r"(pypi|npm):[A-Za-z0-9@/_.-]{1,214}")
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def _confinement_auth(request: Request) -> None:
+    expected = getattr(request.app.state, "confinement_token", "")
+    if not expected or not hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + expected):
+        raise HTTPException(401, "Jeton de confinement invalide.")
+
 # Separate auth: the defense backend cannot borrow the gateway agent token.
 confinement_router = APIRouter()
 
@@ -135,12 +145,58 @@ async def confine(body: ConfinementIn, request: Request):
     if not expected or not hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + expected):
         raise HTTPException(401, "Jeton de confinement invalide.")
     gateway = request.app.state.gateway
+    if body.action == "quarantaine_source" and _PACKAGE_REF.fullmatch(body.cible):
+        # Source = un package : il est refusé à tous les agents, quelle que soit sa version, jusqu'à levée.
+        key = request.app.state.defense.quarantine_package(body.cible, body.incident_id, body.approuve_par)
+        return {"etat": "execute", "package": key, "quarantaine": True}
+    if body.action == "quarantaine_source" and _UUID.fullmatch(body.cible):
+        # Source = un document de la base : il n'est plus jamais rendu par la recherche de l'agent.
+        title = await request.app.state.defense.quarantine_document(body.cible, body.incident_id, body.approuve_par)
+        if title is None:
+            raise HTTPException(422, "Document inconnu.")
+        return {"etat": "execute", "document": body.cible, "titre": title, "quarantaine": True}
     if body.action != "suspendre_outil":
-        raise HTTPException(422, "Seule la suspension d’outil est prise en charge.")
+        raise HTTPException(422, "Prises en charge : suspension d’outil, quarantaine d’un package (pypi:… / npm:…) ou d’un document.")
     if body.cible not in {t["name"] for t in gateway.tools()} and body.cible != "install_package":
         raise HTTPException(422, "Outil inconnu.")
     request.app.state.defense.suspend(body.agent_id, body.cible, body.incident_id, body.approuve_par)
     return {"etat": "execute", "tool": body.cible, "agent_id": body.agent_id}
+
+
+@confinement_router.get("/confinement/documents")
+async def quarantined_documents(request: Request):
+    _confinement_auth(request)
+    return {"documents": request.app.state.defense.quarantined_documents()}
+
+
+@confinement_router.delete("/confinement/documents/{document_id}")
+async def release_document(document_id: UUID, request: Request):
+    """Lève la quarantaine d'un document : il retrouve son statut précédent."""
+    _confinement_auth(request)
+    if not await request.app.state.defense.release_document(document_id):
+        raise HTTPException(404, "Ce document n'est pas en quarantaine.")
+    return {"document": str(document_id), "quarantaine": False}
+
+
+class RemovalIn(BaseModel):
+    demande_par: str = Field(min_length=1, max_length=100)
+    raison: str = Field(default="Retiré après contre-vérification", max_length=500)
+
+
+@confinement_router.post("/packages/{review_id}/removal")
+async def remove_package(review_id: UUID, body: RemovalIn, request: Request):
+    """Retire un package approuvé, à la demande du backend de défense, après confirmation de l'analyste
+    qui l'avait approuvé. Même jeton que le confinement."""
+    expected = getattr(request.app.state, "confinement_token", "")
+    if not expected or not hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + expected):
+        raise HTTPException(401, "Jeton de confinement invalide.")
+    from packages.review import NotPending, UnknownReview
+    try:
+        return await request.app.state.packages.remove(review_id, decided_by=body.demande_par, reason=body.raison)
+    except UnknownReview:
+        raise HTTPException(404, "Revue de package inconnue.") from None
+    except NotPending as exc:
+        raise HTTPException(409, f"Ce package n'est pas approuvé (état : {exc}).") from None
 
 
 @router.post("/gateway/sessions/{trace_id}/complete")

@@ -48,6 +48,7 @@ class PostgresCompanyData:
             if embedding is not None:
                 cur = await conn.execute(
                     "select id, title, content from public.documents where embedding is not null "
+                    "and review_status is distinct from 'quarantined' "
                     "order by embedding operator(extensions.<=>) %s::extensions.vector limit %s",
                     (_vector(embedding), limit))
                 rows = await cur.fetchall()
@@ -61,7 +62,8 @@ class PostgresCompanyData:
                 "select id, title, content from ("
                 "  select d.id, d.title, d.content, d.created_at, ("
                 "    select count(*) filter (where d.content ilike w) + 2 * count(*) filter (where d.title ilike w)"
-                "    from unnest(%s::text[]) w) as score from public.documents d) ranked "
+                "    from unnest(%s::text[]) w) as score from public.documents d "
+                "    where d.review_status is distinct from 'quarantined') ranked "
                 "where score > 0 order by score desc, created_at limit %s", (words, limit))
             return await cur.fetchall()
 
@@ -120,13 +122,14 @@ class MemoryCompanyData:
     async def search_documents(
         self, query: str, embedding: list[float] | None, limit: int = 3
     ) -> list[dict[str, Any]]:
-        embedded = [d for d in self.documents if d["embedding"] is not None]
+        visible = [d for d in self.documents if d.get("review_status") != "quarantined"]
+        embedded = [d for d in visible if d["embedding"] is not None]
         if embedding is not None and embedded:
             ranked = sorted(embedded, key=lambda d: -sum(a * b for a, b in zip(d["embedding"], embedding)))
         else:
             words = set(_WORD.findall(query.lower()))
             scored = [(sum((w in d["content"].lower()) + 2 * (w in d["title"].lower()) for w in words), d)
-                      for d in self.documents]
+                      for d in visible]
             ranked = [d for score, d in sorted(scored, key=lambda s: -s[0]) if score > 0]
         return [{"id": d["id"], "title": d["title"], "content": d["content"]} for d in ranked[:limit]]
 

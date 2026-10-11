@@ -6,7 +6,7 @@ from typing import Any, Literal, Protocol
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from packages.review import NotPending, PackageReviewer, ReplacementRefused, UnknownReview
@@ -76,13 +76,20 @@ async def _analyst(request: Request) -> str:
 router = APIRouter()
 
 
+async def _contre_verification(request: Request, review_id: UUID, analyst: str) -> None:
+    bridge = getattr(request.app.state, "defense", None)
+    if bridge is not None:
+        await bridge.request_reverification(request.app.state.packages, review_id, analyst)
+
+
 @router.post("/packages/{review_id}/decision")
 async def decide(
-    review_id: UUID, body: DecisionIn, request: Request, analyst: str = Depends(_analyst)
+    review_id: UUID, body: DecisionIn, request: Request, background: BackgroundTasks,
+    analyst: str = Depends(_analyst),
 ) -> dict[str, Any]:
     reviewer: PackageReviewer = request.app.state.packages
     try:
-        return await reviewer.decide(
+        result = await reviewer.decide(
             review_id, body.decision, decided_by=analyst, note=body.note,
             replacement_name=body.replacement.name if body.replacement else None,
             replacement_version=body.replacement.version if body.replacement else None,
@@ -93,3 +100,7 @@ async def decide(
         raise HTTPException(status_code=409, detail="Ce package n'attend plus de décision.") from None
     except ReplacementRefused as exc:
         raise HTTPException(status_code=422, detail=f"Remplacement refusé : {exc}") from None
+    # Même approuvé par un humain, le package est revérifié par les agents si l'enquête initiale était peu fiable.
+    if body.decision == "approve":
+        background.add_task(_contre_verification, request, review_id, analyst)
+    return result

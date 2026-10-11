@@ -98,7 +98,11 @@ Pour lancer les tests sur une base PostgreSQL (dans un schéma jetable, jamais `
 
 ## Ce qui reste simple pour l'instant (à améliorer ensuite)
 
-- Une seule règle : lecture d'une ressource sensible suivie d'une sortie vers l'extérieur.
+- Deux règles :
+  1. lecture d'une ressource sensible suivie d'une sortie vers l'extérieur ;
+  2. installation de package bloquée par la passerelle (réponse `install_package` en attente d'un analyste ou refusée). L'enquêteur cite alors la demande ET le refus (conclusion `package_suspect`) ; une installation retenue par la passerelle compte comme un `blocage`. Un package sain installé automatiquement ne déclenche rien. Tests : `tests/test_pipeline.py` (section 7), sur des sessions réelles exportées de Supabase (`exemple_package_suspect.json`, `exemple_package_sain.json`).
+  3. accès à un leurre (`decoy_access`, la passerelle a dérouté la session vers le bac à sable). L'enquêteur cite l'appel d'outil ET l'accès (conclusion `acces_leurre`). Test : `exemple_leurre.json`, session réelle.
+- Contre-vérification des packages approuvés (`contre_verification.py`) : chaque fois qu'un analyste autorise un package bloqué, la passerelle demande une deuxième vérification (`POST /packages/contre-verification`). Les agents collectent eux-mêmes des faits (registre PyPI / npm, vulnérabilités OSV, signaux du contrôle), l'enquêteur rend un verdict (sûr / douteux / dangereux) en citant ces faits, le vérificateur refuse « sûr » si un fait critique le contredit. Verdict non positif, ou enquête initiale sûre à ≥ 85 % que le package est suspect (`SEUIL_CONFIRMATION_D_OFFICE`) : seul l'analyste qui a approuvé peut répondre (`POST /contre-verifications/{id}/confirmation`) ; s'il refuse, la passerelle retire le package (désinstallation, inventaire, revue passée à « refusé »). Tests : `tests/test_contre_verification.py`.
 - L'action réelle dépend de la passerelle d'Elyott : tant qu'elle n'est pas branchée, les incidents approuvés restent « en attente d'exécution ».
 - Les jetons d'accès sont partagés (un pour la passerelle, un pour les analystes). En entreprise : connexion par l'annuaire (SSO), et le nom de l'analyste viendra de cette connexion au lieu du champ `analyst`.
 - Les événements sont gardés dans le dossier de l'incident ; une table d'événements séparée pourra venir avec Léon.

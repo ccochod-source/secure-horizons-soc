@@ -8,6 +8,9 @@ POST /incidents/{id}/execution   (passerelle) confirme que l'action approuvée a
 GET  /incidents                  (interface) liste des incidents (le plus récent d'abord)
 GET  /incidents/{id}             (interface) un incident
 POST /incidents/{id}/decision    (interface) l'analyste approuve ou refuse l'action proposée
+POST /packages/contre-verification          (passerelle) un analyste vient d'approuver un package : 2e vérification
+GET  /contre-verifications[?review_id=]     (interface) contre-vérifications des packages approuvés
+POST /contre-verifications/{id}/confirmation (interface) l'analyste qui a approuvé maintient ou retire le package
 
 Authentification (facultative en local, à activer dès qu'on partage le serveur) :
 - PASSERELLE_TOKEN : la passerelle envoie l'en-tête  Authorization: Bearer <PASSERELLE_TOKEN>
@@ -22,7 +25,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 
+import contre_verification
 import stockage
+from contre_verification import Confirmation, DemandeContreVerification
 from formats import CompteRenduExecution, DecisionAnalyste, Incident, LotEvenements
 from pipeline import construire_pipeline, maintenant, nouveau_thread, preparer_evenements
 
@@ -113,3 +118,31 @@ def compte_rendu_execution(incident_id: str, compte_rendu: CompteRenduExecution)
     incident["status"] = "Confiné" if compte_rendu.etat == "execute" else "Approuvé, en attente d'exécution"
     stockage.enregistrer(incident)
     return incident
+
+
+@app.post("/packages/contre-verification", dependencies=[passerelle])
+def demander_contre_verification(demande: DemandeContreVerification):
+    """La passerelle signale une approbation humaine : les agents refont une vérification indépendante. Un verdict
+    non positif, ou une enquête initiale sûre à ≥ 85 % que le package est suspect, demande la confirmation de l'analyste."""
+    try:
+        return contre_verification.contre_verifier(demande)
+    except Exception as erreur:
+        raise HTTPException(502, f"La contre-vérification a échoué : {type(erreur).__name__}") from erreur
+
+
+@app.get("/contre-verifications", dependencies=[analyste])
+def lister_contre_verifications(review_id: str | None = None):
+    return stockage.lister_contre_verifications(review_id)
+
+
+@app.get("/contre-verifications/{cv_id}", dependencies=[analyste])
+def lire_contre_verification(cv_id: str):
+    cv = stockage.lire_contre_verification(cv_id)
+    if not cv:
+        raise HTTPException(404, "Contre-vérification inconnue")
+    return cv
+
+
+@app.post("/contre-verifications/{cv_id}/confirmation", dependencies=[analyste])
+def confirmer_contre_verification(cv_id: str, confirmation: Confirmation):
+    return contre_verification.confirmer(cv_id, confirmation)

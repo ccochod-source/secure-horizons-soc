@@ -20,12 +20,17 @@ class InstallError(RuntimeError):
 class Installer(Protocol):
     async def install(self, ecosystem: str, name: str, version: str, archive: Path | None) -> dict[str, Any]: ...
 
+    async def uninstall(self, ecosystem: str, name: str) -> dict[str, Any]: ...
+
 
 class RecordingInstaller:
     """N'exécute rien : l'installation est journalisée, pas réalisée."""
 
     async def install(self, ecosystem: str, name: str, version: str, archive: Path | None) -> dict[str, Any]:
         return {"installed": True, "simulated": True, "note": "Installation enregistrée, aucun code exécuté."}
+
+    async def uninstall(self, ecosystem: str, name: str) -> dict[str, Any]:
+        return {"removed": True, "simulated": True, "note": "Rien n'avait été installé : retrait enregistré."}
 
 
 class AgentEnvInstaller:
@@ -55,3 +60,19 @@ class AgentEnvInstaller:
         if process.returncode != 0:
             raise InstallError(stderr.decode("utf-8", errors="replace")[-300:].strip() or "échec de l'installation")
         return {"installed": True, "simulated": False, "environment": str(self._env)}
+
+    async def uninstall(self, ecosystem: str, name: str) -> dict[str, Any]:
+        """Désinstalle le package du dossier isolé de l'agent (jamais de l'environnement du backend)."""
+        if ecosystem == "pypi":
+            command = [str(self._env / "bin" / "python"), "-m", "pip", "uninstall", "-y", "--disable-pip-version-check", name]
+        else:
+            command = ["npm", "uninstall", "--no-audit", "--no-fund", "--prefix", str(self._env / "node"), name]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            _, stderr = await asyncio.wait_for(process.communicate(), INSTALL_TIMEOUT)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise InstallError(type(exc).__name__) from exc
+        if process.returncode != 0:
+            raise InstallError(stderr.decode("utf-8", errors="replace")[-300:].strip() or "échec de la désinstallation")
+        return {"removed": True, "simulated": False, "environment": str(self._env)}

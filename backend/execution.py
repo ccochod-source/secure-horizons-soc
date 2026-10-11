@@ -27,3 +27,24 @@ def executer(incident: dict) -> dict:
     if reponse.is_success:
         return {"etat": "execute", "detail": reponse.text[:300]}
     return {"etat": "echec", "detail": f"La passerelle a répondu {reponse.status_code} : {reponse.text[:300]}"}
+
+
+def retirer_package(review_id: str, demande_par: str, raison: str) -> dict:
+    """Demande à la passerelle de retirer un package approuvé (désinstallation + suppression de l'inventaire).
+    Même principe que le confinement : sans confirmation de la passerelle, rien n'est annoncé comme retiré."""
+    base = os.getenv("RETRAIT_URL", "")
+    if not base and os.getenv("CONFINEMENT_URL", ""):
+        from urllib.parse import urlsplit
+        adresse = urlsplit(os.environ["CONFINEMENT_URL"])
+        base = f"{adresse.scheme}://{adresse.netloc}"
+    if not base:
+        return {"etat": "echec", "detail": "Aucune passerelle configurée (RETRAIT_URL ou CONFINEMENT_URL)."}
+    try:
+        reponse = httpx.post(f"{base.rstrip('/')}/packages/{review_id}/removal", timeout=30,
+                             json={"demande_par": demande_par, "raison": raison},
+                             headers={"Authorization": f"Bearer {os.getenv('CONFINEMENT_TOKEN', '')}"})
+    except httpx.HTTPError as erreur:
+        return {"etat": "echec", "detail": f"Passerelle injoignable : {erreur}"}
+    if reponse.is_success:
+        return {"etat": "execute", "detail": reponse.text[:300]}
+    return {"etat": "echec", "detail": f"La passerelle a répondu {reponse.status_code} : {reponse.text[:300]}"}
