@@ -65,6 +65,14 @@ class DecoyStore(Protocol):
         """Compte le déclenchement sur chaque leurre et lève l'alerte, d'un seul tenant."""
         ...
 
+    async def alert(self, alert_id: UUID) -> dict[str, Any] | None:
+        """Source, verdict et noms des leurres touchés d'une alerte."""
+        ...
+
+    async def set_verdict(self, alert_id: UUID, verdict: str, analyst: str) -> bool:
+        """Faux si un verdict a déjà été rendu : il ne se réécrit pas."""
+        ...
+
 
 class PostgresDecoyStore:
     """Écrit avec le compte de DATABASE_URL : aucun rôle dédié n'existe encore pour ce bloc."""
@@ -131,6 +139,27 @@ class PostgresDecoyStore:
                  ALERT_SOURCE, ALERT_SIGNAL, alert["affected_agent"], alert["summary"]))
             return (await cur.fetchone())["id"]
 
+    async def alert(self, alert_id: UUID) -> dict[str, Any] | None:
+        async with self._db.as_owner() as conn:
+            # L'événement decoy_access de l'alerte porte les noms des leurres dans resource_id.
+            cur = await conn.execute(
+                "select a.id, a.source, a.analyst_verdict, a.analyst_verdict_by, e.resource_id "
+                "from public.alerts a left join public.events e on e.id = a.event_id where a.id = %s",
+                (alert_id,))
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        labels = [label.strip() for label in (row.pop("resource_id") or "").split(",") if label.strip()]
+        return {**row, "decoys": labels}
+
+    async def set_verdict(self, alert_id: UUID, verdict: str, analyst: str) -> bool:
+        async with self._db.as_owner() as conn:
+            cur = await conn.execute(
+                "update public.alerts set analyst_verdict = %s, analyst_verdict_by = %s, "
+                "analyst_verdict_at = now() where id = %s and analyst_verdict is null returning id",
+                (verdict, UUID(analyst), alert_id))
+            return await cur.fetchone() is not None
+
 
 class MemoryDecoyStore:
     """Leurres en mémoire, pour les tests et le développement hors ligne."""
@@ -177,5 +206,21 @@ class MemoryDecoyStore:
             self.first_triggered.setdefault(decoy_id, datetime.now(timezone.utc))
         alert_id = uuid4()
         self.alerts.append({"id": alert_id, "source": ALERT_SOURCE, "signal": ALERT_SIGNAL,
-                            "status": "open", **alert})
+                            "status": "open", "decoy_ids": list(decoy_ids), "analyst_verdict": None,
+                            "analyst_verdict_by": None, **alert})
         return alert_id
+
+    async def alert(self, alert_id: UUID) -> dict[str, Any] | None:
+        found = next((a for a in self.alerts if a["id"] == alert_id), None)
+        if found is None:
+            return None
+        return {"id": alert_id, "source": found["source"], "analyst_verdict": found["analyst_verdict"],
+                "analyst_verdict_by": found["analyst_verdict_by"],
+                "decoys": [r.label for r in self.rows if r.id in found["decoy_ids"]]}
+
+    async def set_verdict(self, alert_id: UUID, verdict: str, analyst: str) -> bool:
+        found = next((a for a in self.alerts if a["id"] == alert_id), None)
+        if found is None or found["analyst_verdict"] is not None:
+            return False
+        found.update(analyst_verdict=verdict, analyst_verdict_by=UUID(analyst))
+        return True

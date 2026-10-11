@@ -24,6 +24,7 @@ RULES: dict[str, tuple[str, float, bool]] = {
     "registry_unavailable": (EXISTENCE, 1.0, True),
     "internal_denied": (EXISTENCE, 1.0, True),
     "internal_pending": (EXISTENCE, 1.0, True),
+    "known_malicious": (EXISTENCE, 1.0, True),  # règle apprise, appliquée par un analyste
     "dependency_confusion": (EXISTENCE, 0.4, False),
     "typosquat": (EXISTENCE, 0.4, False),
     "recently_created": (EXISTENCE, 0.2, False),
