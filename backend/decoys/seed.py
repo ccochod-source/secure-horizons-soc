@@ -17,6 +17,7 @@ from typing import Callable
 
 import httpx
 
+from common.rules import RuleStore
 from decoys.store import DecoyStore
 
 logger = logging.getLogger(__name__)
@@ -115,11 +116,13 @@ class Seeder:
     def __init__(
         self, store: DecoyStore, *, gitguardian_api_key: str | None = None,
         client: httpx.AsyncClient | None = None, lures: tuple[LureSpec, ...] = LURES,
+        rules: RuleStore | None = None,
     ) -> None:
         self._store = store
         self._api_key = gitguardian_api_key
         self._client = client
         self._lures = lures
+        self._rules = rules  # règles de leurres apprises ; seules les actives sont semées
 
     async def seed(self) -> SeedReport:
         """Plante ce qui manque, sans toucher à ce qui existe."""
@@ -128,7 +131,7 @@ class Seeder:
         documents = {d.title for d in current.documents}
         files = {(f.repository, f.path) for f in current.files}
         report = SeedReport([], [], [])
-        for spec in self._lures:
+        for spec in (*self._lures, *await self._learned()):
             present = spec.name in documents if spec.kind == "document" else (spec.repository, spec.name) in files
             if present:
                 report.existing.append(spec.label)
@@ -154,6 +157,17 @@ class Seeder:
                 report.planted.append(spec.label)
             await self._store.register(spec.label, spec.decoy_type, spec.location)
         return report
+
+    async def _learned(self) -> tuple[LureSpec, ...]:
+        if self._rules is None:
+            return ()
+        from decoys.learning import learned_lures  # import tardif : learning dépend de ce module
+        try:
+            return await learned_lures(self._rules)
+        except Exception:
+            # Règles illisibles : on sème quand même la liste écrite à la main.
+            logger.exception("règles de leurres illisibles : semis sans elles")
+            return ()
 
     async def _gitguardian_honeytoken(self) -> dict[str, str] | None:
         """Vrai honeytoken GitGuardian (clé AWS surveillée), si l'accès est disponible."""

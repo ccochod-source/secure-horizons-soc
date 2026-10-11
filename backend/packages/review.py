@@ -20,6 +20,7 @@ from gateway.events import EventRecord, EventStore
 from gateway.session import Session
 from packages import existence, static
 from packages.existence import PackageInfo, RegistryUnavailable, VersionNotFound
+from packages.learning import Learned, PackageLearning
 from packages.install import InstallError, Installer, RecordingInstaller
 from packages.quarantine import Archive, ArchiveUnavailable, DigestMismatch, LocalQuarantine
 from packages.reputation import reputation
@@ -62,6 +63,7 @@ class Analysis:
     archive: Archive | None = None
     sha256: str | None = None
     internal: bool = False  # version approuvée de la liste interne
+    learned_replacement: dict[str, Any] | None = None  # règle replacement_map active pour ce nom
 
 
 class PackageReviewer:
@@ -76,6 +78,7 @@ class PackageReviewer:
         quarantine: LocalQuarantine,
         installer: Installer | None = None,
         *,
+        learning: PackageLearning | None = None,
         threshold: float = THRESHOLD,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -85,6 +88,7 @@ class PackageReviewer:
         self._client = client
         self._quarantine = quarantine
         self._installer: Installer = installer or RecordingInstaller()
+        self._learning = learning
         self._threshold = threshold
         self._now = now
 
@@ -115,6 +119,9 @@ class PackageReviewer:
         level = risk_level(analysis.signals, self._threshold)
         human = needs_human(analysis.signals, self._threshold)
         decision, replacement = _recommended(analysis.signals, human)
+        learned_rule = analysis.learned_replacement
+        if human and replacement is None and learned_rule is not None:
+            decision, replacement = "replace", learned_rule["value"]["to"]
         safe = (await self._pseudonymizer.pseudonymize({
             "checks": {
                 "request_event_id": str(event_id), "requested_version": version, "score": score,
@@ -122,6 +129,7 @@ class PackageReviewer:
                 "signals": [s.as_dict() for s in analysis.signals], "steps": analysis.steps,
                 "recommended_decision": decision, "suggested_replacement": replacement,
                 "internal_allowlist": analysis.internal,
+                "learned_replacement": _rule_dict(learned_rule),
             },
             "evidence": {
                 "excerpts": [{"signal": s.code, **e} for s in analysis.signals for e in s.evidence],
@@ -137,6 +145,22 @@ class PackageReviewer:
         reference = _reference(ecosystem, name, analysis.version)
         summary = {"package": reference, "score": score, "risk_level": level,
                    "signals": [{"code": s.code, "explanation": s.explanation} for s in analysis.signals]}
+
+        learned_block = next((s for s in analysis.signals if s.code == "known_malicious"), None)
+        if learned_block is not None:
+            # Un analyste a déjà rejeté ce package et appliqué la règle : pas de seconde file d'attente.
+            decided_by = f"regle_apprise_v{learned_block.data['version']}"
+            await self._store.update_review(
+                review_id, state="rejected", decided_by=decided_by, decided_at=self._now(),
+                decision_note=learned_block.explanation, **fields)
+            await self._trace(
+                session.trace_id, session.run_id, event_id, event_type="package_review",
+                actor_type="system", actor_id=ACTOR, action="review", result="blocked",
+                resource_id=reference, content=summary,
+                metadata={"review_id": str(review_id), "rule_id": learned_block.data["rule_id"],
+                          "ruleset_version": learned_block.data["version"]})
+            return {"status": "blocked", "review_id": str(review_id), "reason": learned_block.explanation,
+                    "risk_score": score, "rule_version": learned_block.data["version"]}
 
         if human:
             await self._store.update_review(review_id, state=PENDING, **fields)
@@ -197,7 +221,19 @@ class PackageReviewer:
                 "Le nom appartient à la liste interne mais cette version n'y figure pas "
                 "(risque de confusion de dépendances)."))
 
-        analysis.signals += existence.name_signals(ecosystem, name)
+        # Règles apprises : seules les lignes actives, appliquées par un analyste, comptent.
+        learned = await self._learned(ecosystem)
+        normalized = existence.normalize(ecosystem, name)
+        rule = learned.malicious.get(normalized)
+        if rule is not None:
+            analysis.steps["existence"] = "learned_block"
+            analysis.signals.append(signal(
+                "known_malicious", f"Bloqué par règle apprise v{rule['version']}.",
+                rule_id=rule["id"], version=rule["version"]))
+            return analysis
+        analysis.learned_replacement = learned.replacements.get(normalized)
+
+        analysis.signals += existence.name_signals(ecosystem, name, learned.popular)
         try:
             info = await existence.lookup(self._client, ecosystem, name, version)
         except RegistryUnavailable:
@@ -247,6 +283,16 @@ class PackageReviewer:
         analysis.steps["reputation"] = (
             "unavailable" if any(s.code == "reputation_unavailable" for s in analysis.signals) else "done")
         return analysis
+
+    async def _learned(self, ecosystem: str) -> Learned:
+        if self._learning is None:
+            return Learned()
+        try:
+            return await self._learning.learned(ecosystem)
+        except Exception:
+            # Listes illisibles : on retombe sur l'analyse complète, jamais sur une approbation.
+            logger.exception("règles apprises illisibles : analyse sans elles")
+            return Learned()
 
     # --- décision de l'analyste ---------------------------------------------
 
@@ -480,6 +526,12 @@ def _archive_dict(archive: Archive | None) -> dict[str, Any] | None:
         return None
     return {"storage_ref": archive.storage_ref, "sha256": archive.sha256, "size": archive.size,
             "filename": archive.filename, "scripts_executed": False}
+
+
+def _rule_dict(rule: dict[str, Any] | None) -> dict[str, Any] | None:
+    if rule is None:
+        return None
+    return {"rule_id": rule["id"], "version": rule["version"], "to": rule["value"]["to"]}
 
 
 def _registry_dict(info: PackageInfo | None) -> dict[str, Any] | None:

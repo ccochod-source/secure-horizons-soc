@@ -1,0 +1,449 @@
+{
+  "generated_at": "2026-10-11T02:56:32+00:00",
+  "real": [
+    "registres PyPI / npm / OSV en direct",
+    "code du contrôle des packages de la passerelle"
+  ],
+  "simulated": [
+    "décisions de l'analyste (aucun jeton Supabase)",
+    "installation des packages",
+    "stockage en mémoire : rien n'est écrit dans la base partagée"
+  ],
+  "metrics": {
+    "before": {
+      "ruleset_version": 0,
+      "malicious_total": 5,
+      "malicious_stopped_before_install": 5,
+      "malicious_blocked_without_human": 0,
+      "malicious_needing_human_decision": 5,
+      "malicious_network_calls": 7,
+      "legitimate_total": 3,
+      "legitimate_installed": 3,
+      "legitimate_sent_to_human": 0,
+      "legitimate_blocked_by_learned_rule": 0
+    },
+    "after": {
+      "ruleset_version": 5,
+      "malicious_total": 5,
+      "malicious_stopped_before_install": 5,
+      "malicious_blocked_without_human": 5,
+      "malicious_needing_human_decision": 0,
+      "malicious_network_calls": 0,
+      "legitimate_total": 3,
+      "legitimate_installed": 3,
+      "legitimate_sent_to_human": 0,
+      "legitimate_blocked_by_learned_rule": 0
+    }
+  },
+  "proposal_alone_changes_nothing": {
+    "package": "reqeusts",
+    "ruleset_version": 0,
+    "decision": "blocked_pending_review",
+    "signals": [
+      {
+        "code": "typosquat",
+        "explanation": "Nom très proche du package répandu « requests »."
+      },
+      {
+        "code": "package_not_found",
+        "explanation": "Package introuvable sur le registre : nom probablement halluciné."
+      }
+    ]
+  },
+  "analyst_decisions": [
+    {
+      "package": "reqeusts",
+      "decision": "reject",
+      "proposals": [
+        {
+          "id": 1,
+          "kind": "known_malicious",
+          "value": {
+            "ecosystem": "pypi",
+            "name": "reqeusts"
+          }
+        }
+      ]
+    },
+    {
+      "package": "pandass",
+      "decision": "reject",
+      "proposals": [
+        {
+          "id": 2,
+          "kind": "known_malicious",
+          "value": {
+            "ecosystem": "pypi",
+            "name": "pandass"
+          }
+        }
+      ]
+    },
+    {
+      "package": "numpyy-fast",
+      "decision": "reject",
+      "proposals": [
+        {
+          "id": 3,
+          "kind": "known_malicious",
+          "value": {
+            "ecosystem": "pypi",
+            "name": "numpyy-fast"
+          }
+        }
+      ]
+    },
+    {
+      "package": "fastjsonparse-turbo",
+      "decision": "reject",
+      "proposals": [
+        {
+          "id": 4,
+          "kind": "known_malicious",
+          "value": {
+            "ecosystem": "pypi",
+            "name": "fastjsonparse-turbo"
+          }
+        }
+      ]
+    },
+    {
+      "package": "lodahs",
+      "decision": "reject",
+      "proposals": [
+        {
+          "id": 5,
+          "kind": "known_malicious",
+          "value": {
+            "ecosystem": "npm",
+            "name": "lodahs"
+          }
+        }
+      ]
+    }
+  ],
+  "rules_applied": [
+    {
+      "id": 1,
+      "kind": "known_malicious",
+      "value": {
+        "ecosystem": "pypi",
+        "name": "reqeusts"
+      },
+      "version": 1
+    },
+    {
+      "id": 2,
+      "kind": "known_malicious",
+      "value": {
+        "ecosystem": "pypi",
+        "name": "pandass"
+      },
+      "version": 2
+    },
+    {
+      "id": 3,
+      "kind": "known_malicious",
+      "value": {
+        "ecosystem": "pypi",
+        "name": "numpyy-fast"
+      },
+      "version": 3
+    },
+    {
+      "id": 4,
+      "kind": "known_malicious",
+      "value": {
+        "ecosystem": "pypi",
+        "name": "fastjsonparse-turbo"
+      },
+      "version": 4
+    },
+    {
+      "id": 5,
+      "kind": "known_malicious",
+      "value": {
+        "ecosystem": "npm",
+        "name": "lodahs"
+      },
+      "version": 5
+    }
+  ],
+  "runs": [
+    {
+      "phase": "before",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "reqeusts",
+      "ruleset_version": 0,
+      "score": 1.0,
+      "decision": "blocked_pending_review",
+      "review_state": "pending_approval",
+      "reason": null,
+      "signals": [
+        {
+          "code": "typosquat",
+          "explanation": "Nom très proche du package répandu « requests »."
+        },
+        {
+          "code": "package_not_found",
+          "explanation": "Package introuvable sur le registre : nom probablement halluciné."
+        }
+      ],
+      "network_calls": 1
+    },
+    {
+      "phase": "before",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "pandass",
+      "ruleset_version": 0,
+      "score": 1.0,
+      "decision": "blocked_pending_review",
+      "review_state": "pending_approval",
+      "reason": null,
+      "signals": [
+        {
+          "code": "typosquat",
+          "explanation": "Nom très proche du package répandu « pandas »."
+        },
+        {
+          "code": "package_not_found",
+          "explanation": "Package introuvable sur le registre : nom probablement halluciné."
+        }
+      ],
+      "network_calls": 1
+    },
+    {
+      "phase": "before",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "numpyy-fast",
+      "ruleset_version": 0,
+      "score": 1.0,
+      "decision": "blocked_pending_review",
+      "review_state": "pending_approval",
+      "reason": null,
+      "signals": [
+        {
+          "code": "package_not_found",
+          "explanation": "Package introuvable sur le registre : nom probablement halluciné."
+        }
+      ],
+      "network_calls": 1
+    },
+    {
+      "phase": "before",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "fastjsonparse-turbo",
+      "ruleset_version": 0,
+      "score": 1.0,
+      "decision": "blocked_pending_review",
+      "review_state": "pending_approval",
+      "reason": null,
+      "signals": [
+        {
+          "code": "package_not_found",
+          "explanation": "Package introuvable sur le registre : nom probablement halluciné."
+        }
+      ],
+      "network_calls": 1
+    },
+    {
+      "phase": "before",
+      "kind": "malicious",
+      "ecosystem": "npm",
+      "package": "lodahs",
+      "ruleset_version": 0,
+      "score": 0.6,
+      "decision": "blocked_pending_review",
+      "review_state": "pending_approval",
+      "reason": null,
+      "signals": [
+        {
+          "code": "typosquat",
+          "explanation": "Nom très proche du package répandu « lodash »."
+        },
+        {
+          "code": "known_vulnerability",
+          "explanation": "1 vulnérabilité(s) connue(s) sur cette version."
+        },
+        {
+          "code": "single_release",
+          "explanation": "Une seule version publiée."
+        }
+      ],
+      "network_calls": 3
+    },
+    {
+      "phase": "before",
+      "kind": "legitimate",
+      "ecosystem": "pypi",
+      "package": "requests",
+      "ruleset_version": 0,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    },
+    {
+      "phase": "before",
+      "kind": "legitimate",
+      "ecosystem": "pypi",
+      "package": "httpx",
+      "ruleset_version": 0,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    },
+    {
+      "phase": "before",
+      "kind": "legitimate",
+      "ecosystem": "npm",
+      "package": "lodash",
+      "ruleset_version": 0,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    },
+    {
+      "phase": "after",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "reqeusts",
+      "ruleset_version": 5,
+      "score": 1.0,
+      "decision": "blocked",
+      "review_state": "rejected",
+      "reason": "Bloqué par règle apprise v1.",
+      "signals": [
+        {
+          "code": "known_malicious",
+          "explanation": "Bloqué par règle apprise v1."
+        }
+      ],
+      "network_calls": 0
+    },
+    {
+      "phase": "after",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "pandass",
+      "ruleset_version": 5,
+      "score": 1.0,
+      "decision": "blocked",
+      "review_state": "rejected",
+      "reason": "Bloqué par règle apprise v2.",
+      "signals": [
+        {
+          "code": "known_malicious",
+          "explanation": "Bloqué par règle apprise v2."
+        }
+      ],
+      "network_calls": 0
+    },
+    {
+      "phase": "after",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "numpyy-fast",
+      "ruleset_version": 5,
+      "score": 1.0,
+      "decision": "blocked",
+      "review_state": "rejected",
+      "reason": "Bloqué par règle apprise v3.",
+      "signals": [
+        {
+          "code": "known_malicious",
+          "explanation": "Bloqué par règle apprise v3."
+        }
+      ],
+      "network_calls": 0
+    },
+    {
+      "phase": "after",
+      "kind": "malicious",
+      "ecosystem": "pypi",
+      "package": "fastjsonparse-turbo",
+      "ruleset_version": 5,
+      "score": 1.0,
+      "decision": "blocked",
+      "review_state": "rejected",
+      "reason": "Bloqué par règle apprise v4.",
+      "signals": [
+        {
+          "code": "known_malicious",
+          "explanation": "Bloqué par règle apprise v4."
+        }
+      ],
+      "network_calls": 0
+    },
+    {
+      "phase": "after",
+      "kind": "malicious",
+      "ecosystem": "npm",
+      "package": "lodahs",
+      "ruleset_version": 5,
+      "score": 1.0,
+      "decision": "blocked",
+      "review_state": "rejected",
+      "reason": "Bloqué par règle apprise v5.",
+      "signals": [
+        {
+          "code": "known_malicious",
+          "explanation": "Bloqué par règle apprise v5."
+        }
+      ],
+      "network_calls": 0
+    },
+    {
+      "phase": "after",
+      "kind": "legitimate",
+      "ecosystem": "pypi",
+      "package": "requests",
+      "ruleset_version": 5,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    },
+    {
+      "phase": "after",
+      "kind": "legitimate",
+      "ecosystem": "pypi",
+      "package": "httpx",
+      "ruleset_version": 5,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    },
+    {
+      "phase": "after",
+      "kind": "legitimate",
+      "ecosystem": "npm",
+      "package": "lodash",
+      "ruleset_version": 5,
+      "score": 0,
+      "decision": "installed",
+      "review_state": "executed",
+      "reason": null,
+      "signals": [],
+      "network_calls": 3
+    }
+  ],
+  "warnings": []
+}

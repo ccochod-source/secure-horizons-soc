@@ -17,7 +17,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from common.config import REPO_ROOT, load_settings
 from common.db import ROLE_GATEWAY, Database
+from common.rules import PostgresRuleStore
 from decoys import DecoyDefense, Detector, PostgresDecoyStore, Seeder, Tarpit
+from decoys.learning import DecoyLearning
+from decoys.routes import router as decoys_router
 from env_attacked import OpenAIClient, PostgresCompanyData, VictimAgent, build_servers, embed_documents
 from env_attacked.routes import router as chat_router
 from gateway.events import PostgresEventStore
@@ -26,6 +29,7 @@ from gateway.proxy import Gateway
 from gateway.routes import router, confinement_router
 from gateway.upstream import McpUpstream
 from packages import AgentEnvInstaller, LocalQuarantine, PackageReviewer, PostgresReviewStore
+from packages.learning import PackageLearning
 from packages.routes import AnalystAuth, SupabaseAuth
 from packages.routes import router as packages_router
 from vault.gitguardian import GitGuardianClient
@@ -50,16 +54,24 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             names = [row["full_name"] for row in await cur.fetchall()]
         pseudonymizer = Pseudonymizer(PostgresTokenStore(db), Scanner(names), gitguardian)
         events = PostgresEventStore(db)
+        review_store = PostgresReviewStore(db)
+        # LEARNING_ENABLED absent ou faux : aucune règle apprise n'est lue ni proposée.
+        learning = (PackageLearning(PostgresRuleStore(db), review_store)
+                    if settings.learning_enabled else None)
         packages = PackageReviewer(
-            PostgresReviewStore(db), events, pseudonymizer, http,
+            review_store, events, pseudonymizer, http,
             LocalQuarantine(settings.package_quarantine_dir),
             AgentEnvInstaller(settings.package_agent_env) if settings.package_agent_env else None,
+            learning=learning,
         )
         decoy_store = PostgresDecoyStore(db)
+        decoy_learning = (DecoyLearning(PostgresRuleStore(db, "decoy_rules"), decoy_store)
+                          if settings.learning_enabled else None)
         if settings.decoys_seed_on_start:
             try:
                 report = await Seeder(
-                    decoy_store, gitguardian_api_key=settings.gitguardian_api_key, client=http).seed()
+                    decoy_store, gitguardian_api_key=settings.gitguardian_api_key, client=http,
+                    rules=decoy_learning.rules if decoy_learning else None).seed()
                 logger.info("leurres : %d planté(s), %d déjà en place, %d ignoré(s)",
                             len(report.planted), len(report.existing), len(report.skipped))
             except Exception:
@@ -95,6 +107,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.gateway = gateway
         app.state.gateway_token = settings.gateway_token
         app.state.packages = packages
+        app.state.learning = learning
+        app.state.decoy_learning = decoy_learning
         app.state.decoys = decoys
         app.state.victim = VictimAgent(gateway, openai) if openai is not None else None
         app.state.analyst_auth = (
@@ -103,6 +117,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         logger.info("passerelle prête : %d nom(s) dans l'annuaire, GitGuardian %s",
                     len(names), "actif" if gitguardian else "absent")
+        logger.info("boucle d'amélioration %s", "active" if learning else "éteinte (LEARNING_ENABLED)")
         yield
     finally:
         for upstream in reversed(upstreams):
@@ -116,7 +131,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(
     *, gateway: Gateway | None = None, gateway_token: str | None = None,
     packages: PackageReviewer | None = None, analyst_auth: AnalystAuth | None = None,
-    victim: VictimAgent | None = None,
+    victim: VictimAgent | None = None, learning: PackageLearning | None = None,
+    decoy_learning: DecoyLearning | None = None,
 ) -> FastAPI:
     """Sans argument : application réelle. Avec une passerelle : application de test."""
     load_dotenv(REPO_ROOT / ".env")
@@ -127,6 +143,8 @@ def create_app(
         app.state.packages = packages
         app.state.analyst_auth = analyst_auth
         app.state.victim = victim
+        app.state.learning = learning
+        app.state.decoy_learning = decoy_learning
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3100")],
@@ -136,6 +154,7 @@ def create_app(
     app.include_router(router)
     app.include_router(confinement_router)
     app.include_router(packages_router)
+    app.include_router(decoys_router)
     app.include_router(chat_router)
 
     @app.get("/health")

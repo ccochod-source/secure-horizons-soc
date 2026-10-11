@@ -1,7 +1,8 @@
-"""Route de décision de l'analyste sur un package en quarantaine."""
+"""Routes de l'analyste : décision sur un package en quarantaine, puis règles apprises."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
@@ -9,7 +10,12 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
+from common.rules import RuleStore
+from packages.learning import PackageLearning
 from packages.review import NotPending, PackageReviewer, ReplacementRefused, UnknownReview
+
+
+logger = logging.getLogger(__name__)
 
 
 class AnalystAuth(Protocol):
@@ -103,4 +109,65 @@ async def decide(
     # Même approuvé par un humain, le package est revérifié par les agents si l'enquête initiale était peu fiable.
     if body.decision == "approve":
         background.add_task(_contre_verification, request, review_id, analyst)
+    # La décision est enregistrée : on en tire des propositions, qui ne changent rien
+    # tant qu'un analyste ne les applique pas. Un échec ici n'annule pas la décision.
+    learning: PackageLearning | None = getattr(request.app.state, "learning", None)
+    if learning is not None:
+        try:
+            result["rule_proposals"] = [_rule(r) for r in await learning.propose(review_id)]
+        except Exception:
+            logger.exception("proposition de règles en échec")
+            result["rule_proposals"] = []
     return result
+
+
+# --- règles apprises : rien ne s'applique sans le clic d'un analyste authentifié ---
+
+def _learning(request: Request) -> PackageLearning:
+    learning: PackageLearning | None = getattr(request.app.state, "learning", None)
+    if learning is None:
+        raise HTTPException(status_code=503, detail="Boucle d'apprentissage non branchée.")
+    return learning
+
+
+def _rule(rule: dict[str, Any], rule_list: str = "package") -> dict[str, Any]:
+    return {**rule, "list": rule_list,
+            "source_decision_id": str(rule["source_decision_id"]) if rule["source_decision_id"] else None,
+            "decided_by": str(rule["decided_by"]) if rule["decided_by"] else None}
+
+
+def _stores(request: Request) -> dict[str, RuleStore]:
+    """Listes de règles branchées, par nom : « package », et « decoy » pour les leurres."""
+    stores = {"package": _learning(request).rules}
+    decoys = getattr(request.app.state, "decoy_learning", None)
+    if decoys is not None:
+        stores["decoy"] = decoys.rules
+    return stores
+
+
+@router.get("/rules/proposals")
+async def proposals(request: Request, analyst: str = Depends(_analyst)) -> dict[str, Any]:
+    """Toutes les règles par statut : à appliquer (proposed), annulables (active), historique."""
+    stores = _stores(request)
+    rows = [_rule(r, name) for name, store in stores.items() for r in await store.rows()]
+    return {"current_version": await stores["package"].current_version(),
+            **{status: [r for r in rows if r["status"] == status]
+               for status in ("proposed", "active", "rolled_back")}}
+
+
+@router.post("/rules/{rule_list}/{rule_id}/{action}")
+async def decide_rule(
+    rule_list: Literal["package", "decoy"], rule_id: int, action: Literal["apply", "rollback"],
+    request: Request, analyst: str = Depends(_analyst),
+) -> dict[str, Any]:
+    """apply : proposed → active. rollback : active → rolled_back. Chacun incrémente la version."""
+    rules = _stores(request).get(rule_list)
+    if rules is None:
+        raise HTTPException(status_code=503, detail="Cette liste de règles n'est pas branchée.")
+    rule = await (rules.apply if action == "apply" else rules.rollback)(rule_id, analyst)
+    if rule is None:
+        if await rules.get(rule_id) is None:
+            raise HTTPException(status_code=404, detail="Règle inconnue.")
+        expected = "proposée" if action == "apply" else "active"
+        raise HTTPException(status_code=409, detail=f"Cette règle n'est pas {expected}.")
+    return {"rule": _rule(rule, rule_list), "current_version": await rules.current_version()}

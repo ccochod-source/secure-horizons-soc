@@ -167,10 +167,13 @@ def _when(value: Any) -> datetime | None:
         return None
 
 
-def similar_popular(ecosystem: str, name: str) -> str | None:
-    """Package répandu dont le nom est à une faute de frappe de celui demandé."""
+def similar_popular(ecosystem: str, name: str, learned: frozenset[str] = frozenset()) -> str | None:
+    """Package répandu dont le nom est à une faute de frappe de celui demandé.
+
+    « learned » : noms ajoutés à la liste de comparaison par des règles actives.
+    """
     wanted = normalize(ecosystem, name)
-    popular = BY_ECOSYSTEM[ecosystem]
+    popular = BY_ECOSYSTEM[ecosystem] | learned
     if wanted in popular:
         return None
     best: tuple[int, str] | None = None
@@ -200,8 +203,8 @@ def edit_distance(a: str, b: str) -> int:
     return previous[-1]
 
 
-def name_signals(ecosystem: str, name: str) -> list[Signal]:
-    target = similar_popular(ecosystem, name)
+def name_signals(ecosystem: str, name: str, learned: frozenset[str] = frozenset()) -> list[Signal]:
+    target = similar_popular(ecosystem, name, learned)
     if target is None:
         return []
     return [signal("typosquat", f"Nom très proche du package répandu « {target} ».", similar_to=target)]
