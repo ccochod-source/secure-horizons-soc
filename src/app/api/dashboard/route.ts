@@ -23,7 +23,10 @@ export interface DashboardData {
     pendingBreakdown: { incidents: number; packages: number; documents: number; reverifications: number };
     certaintyAvg: number | null; incidents: number; incidentsBySeverity: Record<string, number>; incidentsByStatus: Record<string, number>;
     activeMeasures: number;
+    humanActions: number; attacksDetected: number; humanActionsPerAttack: number | null; // actions humaines / attaque détectée
   };
+  /** Boucle d'apprentissage : règles de défense apprises (liste des packages/leurres), version qui s'auto-incrémente. */
+  learning: { version: number; proposed: number; active: number; rolledBack: number; byList: { package: { active: number; proposed: number }; decoy: { active: number; proposed: number } }; series: number[] };
   series: { label: string; sessions: number; threats: number }[];
   split: { safe: number; threats: number; open: number };
   incidents: { id: string; title: string; severity: string; status: string; confidence: number; proposal: string; decision: string; time: string }[];
@@ -92,7 +95,7 @@ export async function GET(request: Request) {
   const defAuth: Record<string, string> = analyst ? { Authorization: `Bearer ${analyst}` } : {};
   const confinement = await privateValue('CONFINEMENT_TOKEN');
 
-  const [gw, df, evRes, incRes, cvRes, docRes, qdocRes] = await Promise.all([
+  const [gw, df, evRes, incRes, cvRes, docRes, qdocRes, pkgRulesRes, decoyRulesRes, metaRes] = await Promise.all([
     up('http://127.0.0.1:8002/health'),
     up('http://127.0.0.1:8000/health'),
     supabase && key ? up(`${supabase}/rest/v1/events?select=trace_id,occurred_at,event_type,action,result,metadata&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.asc&limit=5000`, { headers: sb }) : null,
@@ -100,6 +103,9 @@ export async function GET(request: Request) {
     base ? up(`${base}/contre-verifications`, { headers: defAuth }) : null,
     supabase && key ? up(`${supabase}/rest/v1/documents?select=id,review_status&review_status=in.(pending,quarantined)`, { headers: sb }) : null,
     up('http://127.0.0.1:8002/confinement/documents', { headers: { Authorization: `Bearer ${confinement}` } }),
+    supabase && key ? up(`${supabase}/rest/v1/package_rules?select=status`, { headers: sb }) : null,
+    supabase && key ? up(`${supabase}/rest/v1/decoy_rules?select=status`, { headers: sb }) : null,
+    supabase && key ? up(`${supabase}/rest/v1/ruleset_meta?select=current_version`, { headers: sb }) : null,
   ]);
   const events = (evRes ? ((await evRes.json()) as Ev[]) : []);
   const incidentsRaw = incRes ? ((await incRes.json()) as Record<string, unknown>[]) : [];
@@ -107,6 +113,23 @@ export async function GET(request: Request) {
   const docsPending = docRes ? ((await docRes.json()) as unknown[]).length : 0;
   const qdocs = qdocRes ? (((await qdocRes.json()) as { documents: DashboardData['measures']['documents'] }).documents ?? []) : [];
   const state = await readGatewayState();
+
+  // Boucle d'apprentissage : règles de défense apprises (packages + leurres) et version du jeu de règles.
+  const pkgRules = pkgRulesRes ? ((await pkgRulesRes.json()) as { status: string }[]) : [];
+  const decoyRules = decoyRulesRes ? ((await decoyRulesRes.json()) as { status: string }[]) : [];
+  const metaRows = metaRes ? ((await metaRes.json()) as { current_version: number }[]) : [];
+  const countBy = (rows: { status: string }[], s: string) => rows.filter((r) => r.status === s).length;
+  const learning: DashboardData['learning'] = {
+    version: metaRows[0]?.current_version ?? 0,
+    proposed: countBy(pkgRules, 'proposed') + countBy(decoyRules, 'proposed'),
+    active: countBy(pkgRules, 'active') + countBy(decoyRules, 'active'),
+    rolledBack: countBy(pkgRules, 'rolled_back') + countBy(decoyRules, 'rolled_back'),
+    byList: {
+      package: { active: countBy(pkgRules, 'active'), proposed: countBy(pkgRules, 'proposed') },
+      decoy: { active: countBy(decoyRules, 'active'), proposed: countBy(decoyRules, 'proposed') },
+    },
+    series: Array.from({ length: Math.max(1, metaRows[0]?.current_version ?? 0) + 1 }, (_, i) => i),
+  };
 
   const cutoff = now - span;
   const current = events.filter((e) => Date.parse(e.occurred_at) >= cutoff);
@@ -139,6 +162,10 @@ export async function GET(request: Request) {
   pendingBreakdown.packages = Math.max(0, pendingBreakdown.packages);
   const certainty = incidents.length ? incidents.reduce((s, i) => s + i.confidence, 0) / incidents.length : null;
   const safe = Math.max(0, cur.sessions - cur.neutralized);
+  // Actions humaines (décisions requises par les attaques) rapportées aux attaques détectées.
+  const humanActions = cur.packagesBlocked + pendingBreakdown.incidents + pendingBreakdown.documents + pendingBreakdown.reverifications;
+  const attacksDetected = cur.neutralized;
+  const humanActionsPerAttack = attacksDetected > 0 ? humanActions / attacksDetected : null;
 
   const data: DashboardData = {
     checkedAt, range,
@@ -150,7 +177,9 @@ export async function GET(request: Request) {
       pendingDecisions: Object.values(pendingBreakdown).reduce((a, b) => a + b, 0), pendingBreakdown,
       certaintyAvg: certainty, incidents: incidents.length, incidentsBySeverity: count(incidents.map((i) => i.severity)), incidentsByStatus: count(incidents.map((i) => i.status)),
       activeMeasures: state.suspensions.length + state.packages.length + qdocs.length,
+      humanActions, attacksDetected, humanActionsPerAttack,
     },
+    learning,
     series,
     split: { safe, threats: cur.neutralized, open: pendingBreakdown.packages },
     incidents: incidents.slice(0, 8),

@@ -12,7 +12,7 @@ type LaunchResult = {
   defenses?: { decoy: boolean; sandbox: boolean; packageBlocked: boolean; outboundBlocked: boolean; secretsMasked: number };
   error?: string;
 };
-type Slot = { loading: boolean; result?: LaunchResult };
+type Slot = { loading: boolean; result?: LaunchResult; verdict?: string };
 const GROUP_ICON = { Connaissances: FileWarning, Packages: PackageX, Agent: Bug } as const;
 
 export function Arsenal() {
@@ -73,16 +73,17 @@ export function Arsenal() {
   };
 
   // décisions
-  const decide = async (key: string, fn: () => Promise<Response>, label: string) => {
+  const decide = async (key: string, fn: () => Promise<Response>, label: string, onDone?: () => void) => {
     setBusy((b) => ({ ...b, [key]: true }));
     try {
       const r = await fn();
       const d = (await r.json()) as { error?: string };
       if (!r.ok) setFlash({ ok: false, text: d.error ?? `Erreur ${r.status}` });
-      else { setFlash({ ok: true, text: `${label} : décision enregistrée.` }); refresh(); }
+      else { setFlash({ ok: true, text: `${label} : décision enregistrée.` }); onDone?.(); refresh(); }
     } catch { setFlash({ ok: false, text: 'Service de décision injoignable.' }); }
     finally { setBusy((b) => ({ ...b, [key]: false })); }
   };
+  const markSlot = (attackId: string, verdict: string) => setSlots((s) => ({ ...s, [attackId]: { ...s[attackId], verdict } }));
   const auth: Record<string, string> = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
   const decideDoc = (id: string, decision: 'approve' | 'reject') => decide(`doc-${id}`, () => fetch('/api/castle/knowledge', { method: 'POST', headers: auth, body: JSON.stringify({ op: 'decide', id, decision }) }), 'Document');
   const decidePkg = (id: string, decision: 'approve' | 'reject') => decide(`pkg-${id}`, () => fetch('/api/packages', { method: 'POST', headers: auth, body: JSON.stringify({ operation: 'decision', id, decision }) }), 'Package');
@@ -168,6 +169,28 @@ export function Arsenal() {
                                       {!!res.defenses?.secretsMasked && <span className="chip"><Lock size={11} /> {res.defenses.secretsMasked} secret(s) masqué(s)</span>}
                                     </div>
                                     {res.answer && <p className="caption faint" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>Réponse de l’agent : {res.answer.slice(0, 280)}{res.answer.length > 280 ? '…' : ''}</p>}
+                                    {slot?.verdict ? (
+                                      <p className="caption" style={{ marginTop: 8, color: 'var(--success)' }}><Check size={12} /> Décision prise : {slot.verdict}</p>
+                                    ) : (res.reviewId || res.docId || res.incidentId) ? (
+                                      <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+                                        <div className="overline" style={{ marginBottom: 6 }}>Décision requise maintenant{(res.reviewId || res.docId) && !token ? ' · connectez-vous en analyste' : ''}</div>
+                                        {res.kind === 'package' && res.reviewId && (
+                                          <Act busy={!!busy[`pkg-${res.reviewId}`]} disabled={!token}
+                                            onApprove={() => decide(`pkg-${res.reviewId}`, () => fetch('/api/packages', { method: 'POST', headers: auth, body: JSON.stringify({ operation: 'decision', id: res.reviewId, decision: 'approve' }) }), 'Package', () => markSlot(a.id, 'package approuvé'))}
+                                            onReject={() => decide(`pkg-${res.reviewId}`, () => fetch('/api/packages', { method: 'POST', headers: auth, body: JSON.stringify({ operation: 'decision', id: res.reviewId, decision: 'reject' }) }), 'Package', () => markSlot(a.id, 'package refusé'))} />
+                                        )}
+                                        {res.kind === 'document' && res.docId && (
+                                          <Act busy={!!busy[`doc-${res.docId}`]} disabled={!token}
+                                            onApprove={() => decide(`doc-${res.docId}`, () => fetch('/api/castle/knowledge', { method: 'POST', headers: auth, body: JSON.stringify({ op: 'decide', id: res.docId, decision: 'approve' }) }), 'Document', () => markSlot(a.id, 'document admis'))}
+                                            onReject={() => decide(`doc-${res.docId}`, () => fetch('/api/castle/knowledge', { method: 'POST', headers: auth, body: JSON.stringify({ op: 'decide', id: res.docId, decision: 'reject' }) }), 'Document', () => markSlot(a.id, 'document rejeté'))} />
+                                        )}
+                                        {res.incidentId && (
+                                          <Act busy={!!busy[`inc-${res.incidentId}`]} approveLabel="Appliquer la mesure" rejectLabel="Rejeter"
+                                            onApprove={() => decide(`inc-${res.incidentId}`, () => fetch('/api/incidents/decision', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: res.incidentId, decision: 'approved' }) }), 'Incident', () => markSlot(a.id, 'mesure appliquée'))}
+                                            onReject={() => decide(`inc-${res.incidentId}`, () => fetch('/api/incidents/decision', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: res.incidentId, decision: 'rejected' }) }), 'Incident', () => markSlot(a.id, 'mesure rejetée'))} />
+                                        )}
+                                      </div>
+                                    ) : null}
                                   </>
                                 )}
                               </div>

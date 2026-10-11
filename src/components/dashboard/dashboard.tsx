@@ -2,7 +2,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Castle, LayoutDashboard, Search, Terminal, ShieldCheck, Lock, Timer, UserCheck, Gauge, PackageX, ArrowUpRight, SlidersHorizontal, ExternalLink, Swords } from 'lucide-react';
+import { Bell, Castle, LayoutDashboard, Search, Terminal, ShieldCheck, Lock, Timer, UserCheck, Gauge, PackageX, ArrowUpRight, SlidersHorizontal, ExternalLink, Swords, TrendingUp } from 'lucide-react';
 import type { DashboardData } from '@/app/api/dashboard/route';
 import { BarsChart, Donut, ScoreBar, Spark } from './charts';
 import { AgentChat } from './chat';
@@ -114,6 +114,32 @@ export function Dashboard() {
             <Kpi label="Fuites de données" value={k ? k.leaks : '—'} delta={k && <span className={`chip ${k.leaks === 0 ? 'success' : 'danger'}`}><Lock size={12} /> {k.leaks === 0 ? 'objectif 0 tenu' : 'à traiter'}</span>} hint={k ? `${k.outboundBlocked} envoi${k.outboundBlocked > 1 ? 's' : ''} externe${k.outboundBlocked > 1 ? 's' : ''} bloqué${k.outboundBlocked > 1 ? 's' : ''} · ${k.secretsMasked} secrets masqués avant tout LLM` : undefined} spark={sessionsSpark.map(() => 0)} color="var(--viz-7)" />
             <Kpi label="Délai médian de détection" value={k?.detectionMedianS === null || !k ? '—' : k.detectionMedianS < 60 ? k.detectionMedianS.toFixed(1) : (k.detectionMedianS / 60).toFixed(1)} unit={k?.detectionMedianS !== null && k ? (k.detectionMedianS < 60 ? 's' : 'min') : undefined} delta={k && <span className="chip info"><Timer size={12} /> demande → blocage</span>} hint="entre la demande à l’agent et la première défense déclenchée" spark={sessionsSpark} color="var(--viz-1)" />
             <Kpi label="Décisions humaines en attente" value={k?.pendingDecisions ?? '—'} delta={k && <span className={`chip ${k.pendingDecisions ? 'warning' : 'success'}`}><UserCheck size={12} /> {k.pendingDecisions ? 'à trancher' : 'à jour'}</span>} hint={k ? `${k.pendingBreakdown.incidents} enquête${k.pendingBreakdown.incidents > 1 ? 's' : ''} · ${k.pendingBreakdown.packages} package${k.pendingBreakdown.packages > 1 ? 's' : ''} · ${k.pendingBreakdown.documents} document${k.pendingBreakdown.documents > 1 ? 's' : ''} · ${k.pendingBreakdown.reverifications} confirmation${k.pendingBreakdown.reverifications > 1 ? 's' : ''}` : undefined} spark={threatsSpark} color="var(--viz-1)" />
+
+            {/* actions humaines par attaque détectée */}
+            <Kpi className="c4" label="Actions humaines / attaque détectée" value={k?.humanActionsPerAttack == null ? '—' : k.humanActionsPerAttack.toFixed(2)} delta={k && <span className="chip info"><UserCheck size={12} /> humain dans la boucle</span>} hint={k ? `${k.humanActions} action${k.humanActions > 1 ? 's' : ''} humaine${k.humanActions > 1 ? 's' : ''} pour ${k.attacksDetected} attaque${k.attacksDetected > 1 ? 's' : ''} détectée${k.attacksDetected > 1 ? 's' : ''} · plus c’est bas, plus c’est automatisé` : undefined} />
+
+            {/* amélioration de la sécurité : boucle d'apprentissage (auto-incrémentation des règles) */}
+            <div className="ds-card c8">
+              <div className="ds-card-head">
+                <div className="ds-icon-badge"><TrendingUp size={18} strokeWidth={1.75} /></div>
+                <div className="grow"><h2 className="h2">Amélioration de la sécurité</h2><p className="body-sm">Règles de défense apprises à partir des vraies attaques (packages et leurres). Le jeu de règles s’auto-incrémente à chaque décision analyste.</p></div>
+                <Link href="/castle" className="btn btn-icon" aria-label="Gérer les règles apprises" title="Château"><ExternalLink size={16} strokeWidth={1.75} /></Link>
+              </div>
+              <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div>
+                  <div className="kpi-line"><span className="kpi">v{data?.learning.version ?? '—'}</span></div>
+                  <p className="caption faint">version du jeu de règles</p>
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}><Spark values={data && data.learning.series.length > 1 ? data.learning.series : [0, 0]} color="var(--viz-2)" /></div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                <span className="chip success"><ShieldCheck size={12} /> {data?.learning.active ?? 0} protection{(data?.learning.active ?? 0) > 1 ? 's' : ''} active{(data?.learning.active ?? 0) > 1 ? 's' : ''}</span>
+                <span className="chip warning"><UserCheck size={12} /> {data?.learning.proposed ?? 0} à valider</span>
+                <span className="chip"><PackageX size={12} /> packages : {data?.learning.byList.package.active ?? 0}</span>
+                <span className="chip">leurres : {data?.learning.byList.decoy.active ?? 0}</span>
+              </div>
+              <p className="caption faint" style={{ marginTop: 8 }}>Quand un analyste refuse un package malveillant ou confirme un leurre touché, une règle est apprise : les attaques identiques suivantes sont bloquées automatiquement.</p>
+            </div>
 
             {/* activité */}
             <div className="ds-card c8">

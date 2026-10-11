@@ -23,6 +23,9 @@ export GATEWAY_TOKEN="${GATEWAY_TOKEN:-${VICTIM_GATEWAY_TOKEN:-}}"
 # Modèle de DevBot : OPENAI_MODEL_DEVBOT s’il est défini (sans toucher aux autres services), sinon gpt-4o-mini.
 [ -n "${OPENAI_MODEL_DEVBOT:-}" ] && export OPENAI_MODEL="$OPENAI_MODEL_DEVBOT"
 export ALEX_API_URL="${ALEX_API_URL:-http://127.0.0.1:8000}" FRONTEND_ORIGIN=http://localhost:3100
+# Boucle d'apprentissage active par défaut : un refus de package / leurre confirmé propose une règle apprise
+# (protections visibles sur le tableau de bord). Mettre LEARNING_ENABLED=0 pour l'éteindre.
+export LEARNING_ENABLED="${LEARNING_ENABLED:-1}"
 mkdir -p .runtime
 cd backend
 exec ../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "${PORT:-8002}"

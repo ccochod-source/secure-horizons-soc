@@ -81,15 +81,26 @@ export async function loadSocSnapshot(): Promise<SocOverview> {
   const backendBase = await localBackendBase();
   const analystToken = await privateValue('ANALYSTE_TOKEN');
   const victimToken = await privateValue('VICTIM_GATEWAY_TOKEN');
+  // Agents actifs : déduits des événements réels tracés (les agents protégés par la passerelle), sur 24 h.
   const agents: SocOverview['agents'] = [];
-  if (victimToken) {
-    try {
-      await getJson('http://127.0.0.1:8001/health', { Authorization: `Bearer ${victimToken}` });
-      agents.push({ id: 'rag-assistant', name: 'Assistant développeur RAG', role: 'Recherche dans Supabase et réponse sourcée' });
-    } catch {
-      // The interface can still show the database and defense backend independently.
+  const AGENT_PROFILES: Record<string, { name: string; role: string }> = {
+    DevBot: { name: 'DevBot — assistant développeur', role: 'Répond aux développeurs derrière la passerelle : coffre, leurres et contrôle des packages' },
+    'dev-01': { name: 'Agent d’intégration dev-01', role: 'Introduit et teste des packages via la passerelle' },
+  };
+  try {
+    const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const rows = await getJson(`${url.origin}/rest/v1/events?select=actor_id,occurred_at&actor_type=eq.agent&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.desc&limit=200`, supabaseHeaders);
+    if (Array.isArray(rows)) {
+      const seen = new Set<string>();
+      for (const row of rows as { actor_id?: unknown }[]) {
+        const id = typeof row.actor_id === 'string' ? row.actor_id : '';
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const profile = AGENT_PROFILES[id] ?? { name: id, role: 'Agent protégé par la passerelle' };
+        agents.push({ id, name: profile.name, role: profile.role });
+      }
     }
-  }
+  } catch { /* La base et le backend restent affichés indépendamment. */ }
   let incidents: SocOverview['incidents'] = [];
   let pipelineConnected = false;
   try {
