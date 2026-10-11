@@ -13,10 +13,14 @@ export class RunDirector {
   private incidentKey = '';
   private cvStatut = '';
   private kStatus = '';
+  private cancelled = false;
+
+  /** Arrête ce metteur en scène : plus aucune animation n'est programmée (enchaînement d'attaques). */
+  dispose() { this.cancelled = true; }
 
   /** Admission du guide : pigeon au dépôt, alerte et trône en quarantaine, victoire si refusé. */
   updateKnowledge(k: KnowledgeAdmission | null) {
-    if (!k || k.status === this.kStatus) return;
+    if (this.cancelled || !k || k.status === this.kStatus) return;
     const prev = this.kStatus;
     this.kStatus = k.status;
     const a = this.animator;
@@ -38,7 +42,7 @@ export class RunDirector {
 
   /** Contre-vérification : alarme pendant l'attente de confirmation, retrait animé si l'analyste annule. */
   updateReverification(cvr: ContreVerification | null) {
-    if (!cvr || cvr.statut === this.cvStatut) return;
+    if (this.cancelled || !cvr || cvr.statut === this.cvStatut) return;
     this.cvStatut = cvr.statut;
     const a = this.animator;
     this.queue = this.queue.then(async () => {
@@ -60,6 +64,7 @@ export class RunDirector {
 
   /** À appeler à chaque relevé ; ne joue que ce qui est nouveau. */
   update(trace: RunTrace) {
+    if (this.cancelled) return;
     for (const ev of trace.events) {
       if (this.seen.has(ev.id)) continue;
       this.seen.add(ev.id);
@@ -75,7 +80,7 @@ export class RunDirector {
 
   /** Enquête des agents défenseurs (backend 8000) : remparts à l'ouverture, sortie à l'exécution de la mesure. */
   updateIncident(inc: DefenseIncident | null) {
-    if (!inc) return;
+    if (this.cancelled || !inc) return;
     const key = `${inc.status}|${inc.decision}|${inc.execution.etat}`;
     if (key === this.incidentKey) return;
     const prev = this.incidentKey;
@@ -98,6 +103,7 @@ export class RunDirector {
   }
 
   private async play(ev: RunEvent) {
+    if (this.cancelled) return;
     const a = this.animator;
     if (this.kind === 'leurres') {
       switch (ev.type) {
@@ -135,6 +141,7 @@ export class RunDirector {
   }
 
   private async playReview(prev: string | null, state: string) {
+    if (this.cancelled) return;
     const a = this.animator;
     if (state === 'pending_approval') {
       a.packageInspecting(false);

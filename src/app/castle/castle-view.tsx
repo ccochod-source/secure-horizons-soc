@@ -94,7 +94,9 @@ export function CastleView() {
   const approvedReview = trace?.review?.humanDecision === 'approve' ? trace.review.id : null;
   const cvrFinal = !!cvr && ['confirmee', 'maintenu', 'retire'].includes(cvr.statut);
   const pending = trace?.review?.state === 'pending_approval';
-  const finished = knowledge?.status === 'rejected' || knowledge?.status === 'missing' || (!!outcome && (!outcome.ok || !outcome.defenseIncidentId || incidentFinal) && (trace?.review?.humanDecision !== 'approve' || cvrFinal));
+  const finished = knowledge?.status === 'rejected' || knowledge?.status === 'missing'
+    || (run?.kind === 'document' && (knowledge?.status === 'quarantined' || knowledge?.status === 'approved'))
+    || (!!outcome && (!outcome.ok || !outcome.defenseIncidentId || incidentFinal) && (trace?.review?.humanDecision !== 'approve' || cvrFinal));
 
   // Suivi en direct des événements du test dans Supabase (sauf import direct : pas d'agent, pas de trace).
   useEffect(() => {
@@ -246,9 +248,33 @@ export function CastleView() {
   }
 
   /** Joue une attaque et attend que son animation se termine, pour enchaîner la suivante. */
+  /** Relève les événements d'une session et anime, jusqu'à ce que la défense attendue se déclenche (ou délai). */
+  async function waitForDefense(traceId: string | undefined, kind: TestKind, since: string): Promise<boolean> {
+    for (let i = 0; i < 24; i++) {
+      try {
+        const p = new URLSearchParams({ kind, since });
+        if (traceId) p.set('traceId', traceId);
+        else p.set('exclude', usedTraces.current.join(','));
+        const r = await fetch(`/api/castle/trace?${p}`, { cache: 'no-store' });
+        if (r.ok) {
+          const t = (await r.json()) as RunTrace;
+          if (t.traceId && !usedTraces.current.includes(t.traceId)) usedTraces.current.push(t.traceId);
+          setTrace(t);
+          director.current?.update(t);
+          if (!traceId && t.traceId) traceId = t.traceId;
+          if (kind === 'leurres' && t.events.some((e) => e.type === 'session_diverted' || e.type === 'decoy_access')) return true;
+          if (kind === 'paquets' && t.review && ['pending_approval', 'rejected', 'executed', 'failed'].includes(t.review.state)) return true;
+        }
+      } catch { /* relevé suivant */ }
+      await delay(1500);
+    }
+    return false;
+  }
+
   async function runOne(kind: TestKind) {
     if (!animator) return;
     const since = new Date(Date.now() - 5000).toISOString();
+    director.current?.dispose();
     animator.reset();
     director.current = new RunDirector(animator, kind);
     setTrace(null); setOutcome(null); setIncident(null); setIncidentMsg(''); setCvr(null); setCvrMsg(''); setDecisionMsg(''); setKnowledge(null); setKnowledgeMsg('');
@@ -276,22 +302,33 @@ export function CastleView() {
       } catch { setKnowledgeMsg('Dépôt indisponible.'); await delay(2000); }
       return;
     }
-    // leurres / paquets : vraie conversation avec DevBot ; l'animation suit les événements tracés.
-    await startAgent(kind);
-    await delay(8000);
+    // leurres / paquets : vraie conversation avec DevBot, puis on attend que la défense se déclenche réellement.
+    let o = await startAgent(kind);
+    let ok = await waitForDefense(o?.traceId, kind, since);
+    if (!ok) {
+      // L'agent n'a pas déclenché la défense attendue (modèle capricieux) : on relance une fois.
+      agentStarted.current = false;
+      o = await startAgent(kind);
+      ok = await waitForDefense(o?.traceId, kind, since);
+    }
+    await delay(5000); // laisse l'animation de la défense se terminer avant l'attaque suivante
   }
 
   /** 2. la conversation réelle avec DevBot (directement pour les leurres, après admission pour les packages). */
-  async function startAgent(kind: TestKind) {
-    if (agentStarted.current) return;
+  async function startAgent(kind: TestKind): Promise<RunOutcome | null> {
+    if (agentStarted.current) return null;
     agentStarted.current = true;
     setRun((r) => (r ? { ...r, since: new Date(Date.now() - 5000).toISOString() } : r));
     setRunning(true);
     try {
       const r = await fetch('/api/castle/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }) });
-      setOutcome((await r.json()) as RunOutcome);
+      const o = (await r.json()) as RunOutcome;
+      setOutcome(o);
+      return o;
     } catch (e) {
-      setOutcome({ kind, ok: false, error: e instanceof Error ? e.message : String(e), durationMs: 0 });
+      const o: RunOutcome = { kind, ok: false, error: e instanceof Error ? e.message : String(e), durationMs: 0 };
+      setOutcome(o);
+      return o;
     } finally {
       setRunning(false);
     }
