@@ -37,7 +37,13 @@ type Ev = { trace_id: string; occurred_at: string; event_type: string; action: s
 const OUTBOUND = new Set(['send_message', 'http.post', 'github.publish', 'email.send', 'slack.post', 'webhook.send']);
 
 async function up(url: string, init: RequestInit = {}) {
-  try { const r = await fetch(url, { ...init, cache: 'no-store', signal: AbortSignal.timeout(4000) }); return r.ok ? r : null; } catch { return null; }
+  // AbortController manuel (et non AbortSignal.timeout) : évite une rejection non gérée quand un backend
+  // est injoignable, pour que le tableau de bord reste servi (données Supabase) même sans les backends.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);
+  try { const r = await fetch(url, { ...init, cache: 'no-store', signal: ctrl.signal }); return r.ok ? r : null; }
+  catch { return null; }
+  finally { clearTimeout(timer); }
 }
 
 function median(values: number[]): number | null {
@@ -96,13 +102,13 @@ export async function GET(request: Request) {
   const confinement = await privateValue('CONFINEMENT_TOKEN');
 
   const [gw, df, evRes, incRes, cvRes, docRes, qdocRes, pkgRulesRes, decoyRulesRes, metaRes] = await Promise.all([
-    up('http://127.0.0.1:8002/health'),
-    up('http://127.0.0.1:8000/health'),
+    up(`${(process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '')}/health`),
+    up(`${(process.env.DEFENSE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '')}/health`),
     supabase && key ? up(`${supabase}/rest/v1/events?select=trace_id,occurred_at,event_type,action,result,metadata&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.asc&limit=5000`, { headers: sb }) : null,
     base ? up(`${base}/incidents`, { headers: defAuth }) : null,
     base ? up(`${base}/contre-verifications`, { headers: defAuth }) : null,
     supabase && key ? up(`${supabase}/rest/v1/documents?select=id,review_status&review_status=in.(pending,quarantined)`, { headers: sb }) : null,
-    up('http://127.0.0.1:8002/confinement/documents', { headers: { Authorization: `Bearer ${confinement}` } }),
+    up(`${(process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '')}/confinement/documents`, { headers: { Authorization: `Bearer ${confinement}` } }),
     supabase && key ? up(`${supabase}/rest/v1/package_rules?select=status`, { headers: sb }) : null,
     supabase && key ? up(`${supabase}/rest/v1/decoy_rules?select=status`, { headers: sb }) : null,
     supabase && key ? up(`${supabase}/rest/v1/ruleset_meta?select=current_version`, { headers: sb }) : null,

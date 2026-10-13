@@ -5,7 +5,7 @@ import { TESTS, type RunOutcome, type TestKind } from '@/castle/animation/run-ty
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 
 /**
  * Lance un test réel sur la passerelle (port 8002). Le château retrouve sa session dans `public.events`

@@ -1,4 +1,6 @@
 export function isLocalRequest(request: Request) {
+  // Déploiement : ALLOW_PUBLIC_ACCESS=1 ouvre l'accès (sinon tout est réservé au serveur local de dev).
+  if (process.env.ALLOW_PUBLIC_ACCESS === '1') return true;
   const url = new URL(request.url);
   const localHosts = ['localhost', '127.0.0.1', '[::1]'];
   const host = request.headers.get('host');

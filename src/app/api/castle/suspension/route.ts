@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store' };
 
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 
 /** Documents en quarantaine : gérés par la passerelle (ils vivent dans Supabase). */
 async function gateway(path: string, method = 'GET') {

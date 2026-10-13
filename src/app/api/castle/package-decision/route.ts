@@ -4,7 +4,7 @@ import { localBackendBase, privateValue } from '@/lib/soc-server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 
 /**
  * Décision UNIQUE de l'analyste sur un package bloqué, avec sa session Supabase :

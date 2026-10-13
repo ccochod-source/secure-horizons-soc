@@ -7,7 +7,7 @@ import { ATTACK_BY_ID } from '@/castle/arsenal-catalog';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 
 /**
  * Lance une simulation d'attaque réelle de l'arsenal (environnement de test autorisé de notre propre SOC).

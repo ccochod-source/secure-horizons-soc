@@ -11,6 +11,6 @@ async function up(url: string) {
 /** État des deux services réels suivis par le château : passerelle (8002) et backend de défense (8000). */
 export async function GET(request: Request) {
   if (!isLocalRequest(request)) return Response.json({ error: 'Réservé à l’interface locale.' }, { status: 403, headers });
-  const [gateway, defense] = await Promise.all([up('http://127.0.0.1:8002/health'), up('http://127.0.0.1:8000/health')]);
+  const [gateway, defense] = await Promise.all([up(`${(process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '')}/health`), up(`${(process.env.DEFENSE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '')}/health`)]);
   return Response.json({ gateway, defense }, { headers });
 }

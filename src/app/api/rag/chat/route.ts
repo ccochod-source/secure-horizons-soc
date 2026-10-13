@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const upstream = await fetch('http://127.0.0.1:8001/chat', {
+    const upstream = await fetch(`${(process.env.RAG_API_URL || 'http://127.0.0.1:8001').replace(/\/+$/, '')}/chat`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, agent_id: 'dev-01' }),

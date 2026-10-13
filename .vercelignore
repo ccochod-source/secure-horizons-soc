@@ -1,0 +1,14 @@
+# Déploiement Vercel : on ne publie que l'app Next.js (racine). Le reste tourne ailleurs.
+backend/
+victim_agent/
+scripts/
+supabase/
+src/castle/*2.*
+.venv/
+.runtime/
+tests/
+*.sqlite
+*.glb.map
+.env
+.env.*
+.claude/

@@ -3,7 +3,7 @@ import { privateValue } from '@/lib/soc-server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store' };
-const base = 'http://127.0.0.1:8002';
+const base = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 export async function POST(request: Request) {
   if (!isLocalRequest(request)) return Response.json({error:'Disponible uniquement en local.'},{status:403,headers});
   let input: Record<string, unknown>;

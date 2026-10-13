@@ -6,7 +6,7 @@ import { localBackendBase, privateValue } from '@/lib/soc-server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 async function defense(p: string, init: RequestInit = {}) {

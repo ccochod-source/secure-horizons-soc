@@ -4,7 +4,7 @@ import { localBackendBase, privateValue } from '@/lib/soc-server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-const GATEWAY = 'http://127.0.0.1:8002';
+const GATEWAY = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 
 export interface PendingDoc { id: string; table: 'documents' | 'repo_files'; title: string; version: string | null; preview: string; status: string; reason: string | null }
 export interface PendingPackage { id: string; package: string; version: string; status: string; risk: string | null; recommendation: string | null }

@@ -31,13 +31,15 @@ export async function privateValue(name: string, fallback = '') {
 }
 
 export async function localBackendBase() {
-  const configured = await privateValue('ALEX_API_URL', 'http://127.0.0.1:8000');
+  const configured = await privateValue('ALEX_API_URL', (process.env.DEFENSE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, ''));
   try {
     const url = new URL(configured);
-    if (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      && !url.username && !url.password && !url.search && !url.hash) return url.origin;
+    const loopback = url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+    // En déploiement (ALLOW_PUBLIC_ACCESS=1) on accepte aussi un backend distant en HTTPS.
+    const remote = process.env.ALLOW_PUBLIC_ACCESS === '1' && (url.protocol === 'https:' || url.protocol === 'http:');
+    if ((loopback || remote) && !url.username && !url.password && !url.search && !url.hash) return url.origin;
   } catch {
-    // Invalid local configuration means the pipeline is unavailable.
+    // Invalid configuration means the pipeline is unavailable.
   }
   return '';
 }
@@ -130,7 +132,7 @@ export async function loadSocSnapshot(): Promise<SocOverview> {
   let gatewayConnected = false;
   try {
     const gatewayToken = await privateValue('GATEWAY_TOKEN') || victimToken;
-    const data = await getJson('http://127.0.0.1:8002/gateway/package-reviews', {Authorization: `Bearer ${gatewayToken}`}) as {reviews: Record<string, unknown>[]};
+    const data = await getJson(`${(process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '')}/gateway/package-reviews`, {Authorization: `Bearer ${gatewayToken}`}) as {reviews: Record<string, unknown>[]};
     reviews = data.reviews.map(r => ({id: String(r.id), package: String(r.package_name), version: typeof r.version === 'string' ? r.version : '—', status: String(r.state), risk: String(r.risk_level || 'À qualifier')}));
     gatewayConnected = true;
   } catch { /* Display unavailability rather than an empty successful result. */ }

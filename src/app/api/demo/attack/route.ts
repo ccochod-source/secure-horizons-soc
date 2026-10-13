@@ -4,7 +4,7 @@ import { privateValue } from '@/lib/soc-server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const gateway = 'http://127.0.0.1:8002';
+const gateway = (process.env.GATEWAY_API_URL || 'http://127.0.0.1:8002').replace(/\/+$/, '');
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const question = "Quel est l'état du déploiement de l'API ?";
 const traceIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

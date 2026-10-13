@@ -17,7 +17,9 @@ export async function GET(request: Request) {
   // Next.js adds x-forwarded-for even to direct connections; accept only a single loopback address.
   const forwardedFor=request.headers.get('x-forwarded-for');
   const localPeer=!forwardedFor || ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(forwardedFor);
-  if(process.env.NODE_ENV==='production' || !loopback.includes(url.hostname) || !requestedOrigin || !localPeer || request.headers.has('forwarded') || (origin && origin !== requestedOrigin) || (site && !['same-origin','none'].includes(site))) {
+  // Déploiement : ALLOW_PUBLIC_ACCESS=1 ouvre l'accès (lecture seule, données agrégées) ; sinon réservé au local.
+  const publicAccess=process.env.ALLOW_PUBLIC_ACCESS==='1';
+  if(!publicAccess && (process.env.NODE_ENV==='production' || !loopback.includes(url.hostname) || !requestedOrigin || !localPeer || request.headers.has('forwarded') || (origin && origin !== requestedOrigin) || (site && !['same-origin','none'].includes(site)))) {
     return Response.json({error:'Cette connexion est réservée au serveur local de développement. Un accès déployé nécessite une authentification analyste.'},{status:403,headers});
   }
   try { return Response.json(await loadSocSnapshot(),{headers}); }
